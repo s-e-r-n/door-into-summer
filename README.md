@@ -64,10 +64,11 @@ The contract an image session writes at `${HYPNOS_HOME}/data/<name>/images.json`
 ```
 {"subject": "<what is generated>", "attempt": <an integer>,
  "original": {"label": "<one line>", "url": "<URL>" | "path": "<absolute path>"},
- "generation": {"label": "<one line>", "url": "<URL>" | "path": "<absolute path>"}}
+ "generation": {"label": "<one line>", "url": "<URL>" | "path": "<absolute path>"},
+ "job": "<higgsfield job id>", "working": {"aspect": "<w>:<h>"}}
 ```
 
-`original` is left out, or null, when the generation starts from no photo. `url` is what the page puts in `img src`, such as the `result_url` of a generation; `path` is a local image file the server serves. A file of any other shape leaves the card as it was.
+`original` is left out, or null, when the generation starts from no photo. `url` is what the page puts in `img src`, such as the `result_url` of a generation; `path` is a local image file the server serves. `job` names the Higgsfield job of the generation shown, and is left out when there is none. `working` is written the moment the session starts the next generation, with the ratio it asked for, and the next attempt's images.json, written without it, ends it. A file of any other shape leaves the card as it was, except a `job` that is not a one-line string and a `working` whose aspect is not two positive integers of at most 4 digits: each is dropped, and the rest of the card shows.
 
 ### Routes
 
@@ -78,6 +79,17 @@ Answered on 127.0.0.1 only, to a Host of `127.0.0.1:<port>` or `localhost:<port>
 - `GET /cards` the same cards, once, as JSON
 - `GET /image/<name>/<slot>` the file of an image given by path, slot `original` or `generation`
 - `POST /feedback` `{"session", "attempt", "text"}` as JSON, at most 1 MiB: 200 `{"number"}` once the message is in the inbox, the doorbell rung or not, 422 with the refusal of `hy-session.sh send`, 400 for another body
+
+A card, on both `/events` and `/cards`:
+
+```
+{"session", "subject", "attempt", "at", "original", "generation", "working", "job", "conversation"}
+```
+
+- `at` the mtime of images.json, in ISO 8601, UTC to the second, such as `2026-10-09T08:30:00Z`, so the write that adds `working` moves it too.
+- `working` `{"aspect": "<w>:<h>"}`, passed through from images.json, absent otherwise.
+- `job` `{"id", "model", "aspect", "quality", "batch", "resolution", "size", "mode", "prompt", "created_at"}`, read by `higgsfield generate get --json -- <id>`: `model` is its `display_name`, `size` is `<width>x<height>`, `created_at` is as Higgsfield gives it, and the others come from its `params`, `aspect_ratio`, `quality`, `batch_size`, `resolution`, `mode`, `prompt`. A field the job does not carry with its type is left out. The server reads each job id once and keeps the answer in memory until it stops, a failed read included: a failed read prints `job <id> unread: <failure>` once, and the card shows no `job`. `job` is absent when images.json names none.
+- `conversation[]` the reviewer's feedbacks, `{"from": "reviewer", "number", "attempt", "text", "state", "sent_at"}`, `sent_at` the mtime of the message file, which the move to `handled/` keeps, and the session's answers, `{"from": "session", "attempt"}`.
 
 ## Tests
 

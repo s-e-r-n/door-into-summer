@@ -384,7 +384,7 @@ expect "the message was sent once, the refusal is gone" \
   "$(messages vase) $(page 'String(document.querySelector("article[data-session=vase] .refused").hidden)') $(conversation vase | jq -c 'map(.[0])')" \
   '1 true ["une seule fois"]'
 lost_answer 'encore une' ' corrigée' 2
-expect "the server dies again, and Gray edits the restored text" "$restored" '"encore une corrigée" 1'
+expect "the server dies again, and the reviewer edits the restored text" "$restored" '"encore une corrigée" 1'
 served bin-next
 sleep 1
 expect "an edited restored text stays in the box once the message shows" \
