@@ -15,6 +15,7 @@ final class Chat {
     private(set) var pending: [Pending] = []
     private(set) var sentAt: [SaidKey: Date] = [:]
     private(set) var commands: [Command] = []
+    private(set) var validated: Set<String> = []
     var inspected: Post?
     private(set) var lastInspected: Post?
     var tagging: String?
@@ -28,7 +29,7 @@ final class Chat {
     }
 
     var messages: [Message] {
-        DoorIntoSummer.messages(of: cards, sentAt: sentAt, pending: pending)
+        DoorIntoSummer.messages(of: cards, sentAt: sentAt, pending: pending, validated: validated)
     }
 
     var sessions: [LiveSession] {
@@ -94,7 +95,11 @@ final class Chat {
     }
 
     func validate(_ post: Post) async -> String? {
-        await send(validation(of: post.session))
+        let refusal = await server.validate(Validation(session: post.session, attempt: post.attempt))
+        if refusal == nil {
+            validated.insert(post.id)
+        }
+        return refusal
     }
 
     func inspect(_ post: Post?) {

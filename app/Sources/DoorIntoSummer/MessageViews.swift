@@ -53,7 +53,7 @@ struct Row<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 16)
         .padding(.horizontal, Layout.horizontalPadding)
-        .background(highlighted ? Color.grayRow : Color.clear)
+        .background(highlighted ? Color.reviewerRow : Color.clear)
         .overlay(alignment: .leading) {
             if inset {
                 Color.secondaryText.frame(width: 2)
@@ -65,13 +65,13 @@ struct Row<Content: View>: View {
     }
 }
 
-struct GrayMessageView: View {
-    let message: GrayMessage
+struct ReviewerMessageView: View {
+    let message: ReviewerMessage
 
     var body: some View {
         Row(highlighted: true, inset: false) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                Text("Gray").font(.monoItalic).foregroundStyle(Color.white)
+                Text("reviewer").font(.monoItalic).foregroundStyle(Color.white)
                 Spacer()
                 Stamp(at: message.at)
             }
@@ -98,8 +98,9 @@ struct PostView: View {
     let inspected: Bool
     let tag: (String) -> Void
     let details: () -> Void
-    let validate: () -> Void
+    let validate: () async -> String?
     @State private var validating = false
+    @State private var refusal: String?
 
     var body: some View {
         Row(highlighted: false, inset: inspected) {
@@ -107,7 +108,7 @@ struct PostView: View {
                 SessionName(session: post.session, tag: tag)
                 Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText)
                 Spacer()
-                Stamp(at: post.at)
+                Stamp(at: nil)
             }
             SettingsLine(job: post.job)
             Text(post.subject)
@@ -115,32 +116,31 @@ struct PostView: View {
             HStack(spacing: 20) {
                 Button("copy prompt") { copyPrompt() }.disabled(post.job?.prompt == nil)
                 Button("details", action: details).foregroundStyle(inspected ? Color.foreground : Color.tertiaryText)
-                Button(post.validated || validating ? "validated" : "validate") {
-                    validating = true
-                    validate()
+                Button(post.validated ? "validated" : "validate") { Task { await validated() } }
+                    .disabled(post.validated || validating)
+                    .foregroundStyle(post.validated ? Color.lit : Color.tertiaryText)
+                if let refusal {
+                    Text(refusal).foregroundStyle(Color.alert)
                 }
-                .disabled(post.validated || validating)
-                .foregroundStyle(post.validated || validating ? Color.lit : Color.tertiaryText)
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.tertiaryText)
         }
-        .onChange(of: post.validated) { validating = false }
     }
 
-    @ViewBuilder private var figures: some View {
-        if post.generation == nil && post.original == nil {
-            Text("image unavailable").foregroundStyle(Color.tertiaryText)
-        } else {
-            HStack(alignment: .top, spacing: 10) {
-                if let original = post.original {
-                    Figure(picture: original, ratio: nil, caption: original.label)
-                }
-                if let generation = post.generation {
-                    Figure(picture: generation, ratio: post.job?.ratio, caption: post.original == nil ? nil : generation.label)
-                }
+    private var figures: some View {
+        HStack(alignment: .top, spacing: 10) {
+            if let original = post.original {
+                Figure(picture: original, ratio: nil, caption: original.label)
             }
+            Figure(picture: post.generation, ratio: post.job?.ratio, caption: post.original == nil ? nil : post.generation.label)
         }
+    }
+
+    private func validated() async {
+        validating = true
+        refusal = await validate()
+        validating = false
     }
 
     private func copyPrompt() {

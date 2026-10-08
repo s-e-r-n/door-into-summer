@@ -40,13 +40,13 @@ struct ChatView: View {
 
     @ViewBuilder private func row(_ message: Message) -> some View {
         switch message {
-        case .gray(let gray):
-            GrayMessageView(message: gray)
+        case .reviewer(let message):
+            ReviewerMessageView(message: message)
         case .post(let post):
             PostView(post: post, inspected: chat.inspected?.id == post.id,
                      tag: { chat.compose(tagging: $0) },
                      details: { chat.inspect(chat.inspected?.id == post.id ? nil : post) },
-                     validate: { Task { await chat.validate(post) } })
+                     validate: { await chat.validate(post) })
         case .working(let working):
             WorkingPostView(working: working, running: chat.connection == .live, tag: { chat.compose(tagging: $0) })
         }

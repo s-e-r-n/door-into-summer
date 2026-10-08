@@ -4,7 +4,7 @@ extension Color {
     static let desk = Color.black
     static let foreground = Color(.sRGB, red: 0.902, green: 0.902, blue: 0.902)
     static let separator = Color.white.opacity(0.09)
-    static let grayRow = Color.white.opacity(0.055)
+    static let reviewerRow = Color.white.opacity(0.055)
     static let secondaryText = Color(.sRGB, red: 0.922, green: 0.922, blue: 0.961).opacity(0.6)
     static let tertiaryText = Color(.sRGB, red: 0.922, green: 0.922, blue: 0.961).opacity(0.3)
     static let mention = Color(.sRGB, red: 0.769, green: 0.655, blue: 0.906)

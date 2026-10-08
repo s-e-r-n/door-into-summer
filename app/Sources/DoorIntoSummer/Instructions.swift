@@ -30,7 +30,3 @@ private func sessionName(of word: Substring) -> String? {
     guard let first = name.first, first.isLetter || first.isNumber, name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return nil }
     return String(name)
 }
-
-func validation(of session: String) -> String {
-    "@\(session) validé"
-}

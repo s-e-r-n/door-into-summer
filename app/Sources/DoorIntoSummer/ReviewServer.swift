@@ -92,14 +92,6 @@ struct Said: Equatable, Hashable, Sendable {
     let sentAt: Date?
 }
 
-struct Attempt: Equatable, Hashable, Sendable {
-    let attempt: Int
-    let original: Picture?
-    let generation: Picture?
-    let job: Job?
-    let at: Date?
-}
-
 struct Card: Equatable, Hashable, Sendable, Decodable {
     let session: String
     let subject: String
@@ -107,16 +99,16 @@ struct Card: Equatable, Hashable, Sendable, Decodable {
     let original: Picture?
     let generation: Picture
     let conversation: [Said]
-    let history: [Attempt]
     let job: Job?
     let working: Working?
+    let validated: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case session, subject, attempt, original, generation, conversation, job, working
+        case session, subject, attempt, original, generation, conversation, job, working, validated
     }
 
     private enum ItemKeys: String, CodingKey {
-        case from, number, attempt, text, state, sentAt = "sent_at", original, generation, job, at
+        case from, number, attempt, text, state, sentAt = "sent_at"
     }
 
     init(from decoder: Decoder) throws {
@@ -128,27 +120,19 @@ struct Card: Equatable, Hashable, Sendable, Decodable {
         generation = try container.decode(Picture.self, forKey: .generation)
         job = try container.decodeIfPresent(Job.self, forKey: .job)
         working = try container.decodeIfPresent(Working.self, forKey: .working)
+        validated = try container.decodeIfPresent(Bool.self, forKey: .validated) ?? false
         var said: [Said] = []
-        var attempts: [Attempt] = []
         var items = try container.nestedUnkeyedContainer(forKey: .conversation)
         while !items.isAtEnd {
             let item = try items.nestedContainer(keyedBy: ItemKeys.self)
-            if try item.decode(String.self, forKey: .from) == "gray" {
-                said.append(Said(number: try item.decode(Int.self, forKey: .number),
-                                 attempt: try item.decode(Int.self, forKey: .attempt),
-                                 text: try item.decode(String.self, forKey: .text),
-                                 state: try item.decode(TickState.self, forKey: .state),
-                                 sentAt: try item.decodeIfPresent(Date.self, forKey: .sentAt)))
-            } else {
-                attempts.append(Attempt(attempt: try item.decode(Int.self, forKey: .attempt),
-                                        original: try item.decodeIfPresent(Picture.self, forKey: .original),
-                                        generation: try item.decodeIfPresent(Picture.self, forKey: .generation),
-                                        job: try item.decodeIfPresent(Job.self, forKey: .job),
-                                        at: try item.decodeIfPresent(Date.self, forKey: .at)))
-            }
+            guard try item.decode(String.self, forKey: .from) == "gray" else { continue }
+            said.append(Said(number: try item.decode(Int.self, forKey: .number),
+                             attempt: try item.decode(Int.self, forKey: .attempt),
+                             text: try item.decode(String.self, forKey: .text),
+                             state: try item.decode(TickState.self, forKey: .state),
+                             sentAt: try item.decodeIfPresent(Date.self, forKey: .sentAt)))
         }
         conversation = said
-        history = attempts
     }
 }
 
@@ -160,6 +144,11 @@ struct Feedback: Equatable, Sendable, Encodable {
     let session: String
     let attempt: Int
     let text: String
+}
+
+struct Validation: Equatable, Sendable, Encodable {
+    let session: String
+    let attempt: Int
 }
 
 enum Board: Sendable {
@@ -237,17 +226,31 @@ struct ReviewServer: Sendable {
     }
 
     func send(_ feedback: Feedback) async -> Sent {
-        var request = URLRequest(url: address.appending(path: "feedback"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(feedback)
-        guard let (data, response) = try? await session.data(for: request), let answer = response as? HTTPURLResponse else {
-            return .refused(Self.unanswered)
-        }
-        let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        if answer.statusCode == 200, let number = payload?["number"] as? Int {
+        let (status, payload) = await posted(feedback, to: "feedback")
+        if status == 200, let number = payload?["number"] as? Int {
             return .sent(number)
         }
-        return .refused(payload?["error"] as? String ?? "The review server answered \(answer.statusCode).")
+        return .refused(refusal(status, payload))
+    }
+
+    func validate(_ validation: Validation) async -> String? {
+        let (status, payload) = await posted(validation, to: "validate")
+        return status == 200 ? nil : refusal(status, payload)
+    }
+
+    private func posted(_ body: some Encodable, to route: String) async -> (Int?, [String: Any]?) {
+        var request = URLRequest(url: address.appending(path: route))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(body)
+        guard let (data, response) = try? await session.data(for: request), let answer = response as? HTTPURLResponse else {
+            return (nil, nil)
+        }
+        return (answer.statusCode, (try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
+    }
+
+    private func refusal(_ status: Int?, _ payload: [String: Any]?) -> String {
+        guard let status else { return Self.unanswered }
+        return payload?["error"] as? String ?? "The review server answered \(status)."
     }
 }
