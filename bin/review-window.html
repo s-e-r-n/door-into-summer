@@ -5,30 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Review window</title>
 <style>
-  :root { color-scheme: light; }
-  html, body { margin: 0; background: #fff; color: #111; overflow-x: hidden; }
+  :root { color-scheme: dark; }
+  html, body { margin: 0; color: #f2f2f2; overflow-x: hidden; }
   body { font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
   main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
   h1 { font-weight: 500; font-size: 17px; margin: 0 0 24px; }
-  .empty { color: #777; }
+  .empty { color: #8e8e8e; }
   article { margin: 0 0 48px; overflow-wrap: anywhere; }
   h2 { font-weight: 500; font-size: 15px; margin: 0 0 12px; }
   .images { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
   figure { margin: 0; }
-  img { display: block; width: 100%; height: auto; background: #f4f4f4; }
-  figcaption { color: #777; font-size: 13px; padding-top: 4px; }
+  img { display: block; width: 100%; height: auto; }
+  figcaption { color: #8e8e8e; font-size: 13px; padding-top: 4px; }
   .feedback { list-style: none; margin: 0 0 12px; padding: 0; }
-  .feedback li { display: flex; gap: 12px; justify-content: space-between; padding: 6px 0; border-top: 1px solid #eee; }
+  .feedback li { display: flex; gap: 12px; justify-content: space-between; padding: 6px 0; border-top: 1px solid #333; }
   .feedback .text { white-space: pre-wrap; }
-  .progress { color: #777; font-size: 13px; flex: none; }
+  .progress { color: #8e8e8e; font-size: 13px; flex: none; }
   .progress span { display: none; }
   li[data-progress=sent] [data-for=sent], li[data-progress=seen] [data-for=seen], li[data-progress=done] [data-for=done] { display: inline; }
-  li[data-progress=done] [data-for=done] { color: #111; }
-  textarea { box-sizing: border-box; width: 100%; min-height: 96px; padding: 8px; font: inherit; border: 1px solid #ccc; resize: vertical; }
+  li[data-progress=done] [data-for=done] { color: #f2f2f2; }
+  textarea { box-sizing: border-box; width: 100%; min-height: 96px; padding: 8px; font: inherit; color: inherit; background: transparent; border: 1px solid #555; resize: vertical; }
   .send { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
-  button { font: inherit; padding: 6px 14px; border: 1px solid #111; background: #fff; cursor: pointer; }
-  button:disabled { color: #999; border-color: #ccc; cursor: default; }
-  output { color: #777; font-size: 13px; }
+  button { font: inherit; color: inherit; padding: 6px 14px; border: 1px solid #f2f2f2; background: transparent; cursor: pointer; }
+  button:disabled { color: #666; border-color: #444; cursor: default; }
+  output { color: #8e8e8e; font-size: 13px; }
 </style>
 </head>
 <body>
