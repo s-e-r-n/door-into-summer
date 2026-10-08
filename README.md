@@ -1,5 +1,5 @@
 # door-into-summer
-Door into Summer: a native macOS chat where Gray reviews each visual an agent session produces, and sends his feedback straight to that session.
+Door into Summer: a native macOS chat where the reviewer sees each visual an agent session produces, and sends feedback straight to that session.
 
 ## App
 
@@ -7,7 +7,7 @@ Door into Summer: a native macOS chat where Gray reviews each visual an agent se
 app/scripts/make_app.sh
 ```
 
-builds `app/.build/Door into Summer.app`, a SwiftUI chat on macOS 26 that is the client of the review server below: it reads `/events` and `/cards`, shows the images it serves, and sends through `/feedback`. One thread holds every live session, oldest first: each session's posts, `image generation <n>`, then the feedbacks Gray gave on them, each with a time and two ticks. Clicking a session's name puts its `@tag` in the chat bar. `details` slides the metadata panel in on the right, `Cmd+B` opens and closes it on the last post opened, `validate` sends `@<session> validé`. The window has no title bar, no traffic lights and no title, opens at two thirds of the screen width, and is dragged by its background.
+builds `app/.build/Door into Summer.app`, a SwiftUI chat on macOS 26 that is the client of the review server below: it reads `/events` and `/cards`, shows the images it serves, and sends through `/feedback`. One thread holds every live session, oldest first: each session's posts, `image generation <n>`, then the feedbacks given on them, each with a time and two ticks. Clicking a session's name puts its `@tag` in the chat bar. `details` slides the metadata panel in on the right, `Cmd+B` opens and closes it on the last post opened, `validate` sends `@<session> validé`. The window has no title bar, no traffic lights and no title, opens at two thirds of the screen width, and is dragged by its background.
 
 The chat bar sends one message to several sessions: `@a instruction /option @b instruction`. An `@session` opens an instruction, the next `@` or the end of the message closes it, and a `/command` belongs to the instruction it sits in. Each session receives its own part, tag included, as the feedback line `feedback · attempt <n>: @<session> <instruction>`, where `<n>` is the attempt the chat showed for that session. A message that does not open with `@session`, or names a session that is not live, is refused under the bar and stays in it.
 
@@ -36,7 +36,7 @@ It reads the sessions of hypnos under `${HYPNOS_HOME:-~/.hypnos}` and writes not
 ~/.hypnos/bin/hy-session.sh send <session> "feedback · attempt <n>: <text>"
 ```
 
-where `<n>` is the attempt the card showed when Gray wrote.
+where `<n>` is the attempt the card showed when the feedback was written.
 
 ### Cards
 
@@ -44,12 +44,12 @@ One card per live session, a session whose `state/<name>.meta` exists, that has 
 
 ### Conversation
 
-Gray's feedbacks are bubbles on the right, in the order they were sent. Each carries two ticks, grey until:
+The reviewer's feedbacks are bubbles on the right, in the order they were sent. Each carries two ticks, grey until:
 
 - the first: the message is in `state/<name>.inbox/`;
 - the second: the session moved it to `state/<name>.inbox/handled/`, it has read it.
 
-The session's answer is a bubble on the left, `attempt <n>`, once images.json reaches an attempt later than the one the feedbacks before it were given on. Every bubble and tick is read from the inbox and the current images.json, so a restart of the server or a reload of the page loses none. A send the server could not answer puts its text back in the box; once that message shows as a bubble all the same, the page clears the box, unless Gray has edited the text since.
+The session's answer is a bubble on the left, `attempt <n>`, once images.json reaches an attempt later than the one the feedbacks before it were given on. Every bubble and tick is read from the inbox and the current images.json, so a restart of the server or a reload of the page loses none. A send the server could not answer puts its text back in the box; once that message shows as a bubble all the same, the page clears the box, unless the text was edited since.
 
 The second tick means read only if the image session moves a feedback to `handled/` as soon as it reads it, before generating. Its brief carries this line:
 

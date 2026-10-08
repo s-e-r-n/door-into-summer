@@ -12,7 +12,7 @@
 | aspect | `job.aspect`, `working.aspect`, strings such as "3:2" | figures | Ratio.init?(_:) | `Ratio { width: Int, height: Int }`, both > 0 | a zero or negative side |
 | SSE frames | `/events`, text lines | ReviewServer | ReviewServer, line parser | `data:` lines joined, `event: page` dropped, comments dropped | a half frame decoded |
 | send answer | `POST /feedback`, JSON | Chat | ReviewServer | `Int` number, or `Refusal(reason)` | a send with no number and no reason |
-| Gray's message | the chat bar, String | Instructions | Instructions.instructions(in:) | `[Instruction { session, text }]`, nil when the text does not open with @session | an instruction with no session |
+| the reviewer's message | the chat bar, String | Instructions | Instructions.instructions(in:) | `[Instruction { session, text }]`, nil when the text does not open with @session | an instruction with no session |
 | skills | `~/.hypnos/skills/*/SKILL.md`, text | SuggestionMenu | Commands.commands(in:) | `[Command { name, description }]`, qualified by frontmatter `door-into-summer: command` | a command with no skill behind it |
 | token under the caret | the chat bar text and selection | SuggestionMenu | Suggestions.token(in:caret:) | `Token { kind: .session or .command, query, range }` | a menu open on no token |
 
