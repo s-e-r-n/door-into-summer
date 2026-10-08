@@ -1,5 +1,26 @@
 # door-into-summer
-Door into Summer: a native macOS window where Gray reviews each visual an agent session produces, and sends his feedback straight to that session.
+Door into Summer: a native macOS chat where Gray reviews each visual an agent session produces, and sends his feedback straight to that session.
+
+## App
+
+```
+app/scripts/make_app.sh
+```
+
+builds `app/.build/Door into Summer.app`, a SwiftUI chat on macOS 26 that is the client of the review server below: it reads `/events` and `/cards`, shows the images it serves, and sends through `/feedback`. One thread holds every live session, oldest first: each session's posts, `image generation <n>`, then the feedbacks Gray gave on them, each with a time and two ticks. Clicking a session's name puts its `@tag` in the chat bar. `details` slides the metadata panel in on the right, `Cmd+B` opens and closes it on the last post opened, `validate` sends `@<session> validé`. The window has no title bar, no traffic lights and no title, opens at two thirds of the screen width, and is dragged by its background.
+
+The chat bar sends one message to several sessions: `@a instruction /option @b instruction`. An `@session` opens an instruction, the next `@` or the end of the message closes it, and a `/command` belongs to the instruction it sits in. Each session receives its own part, tag included, as the feedback line `feedback · attempt <n>: @<session> <instruction>`, where `<n>` is the attempt the chat showed for that session. A message that does not open with `@session`, or names a session that is not live, is refused under the bar and stays in it.
+
+Typing `@` lists the live sessions, `/` lists the image retouching skills: a skill in `~/.hypnos/skills` whose `SKILL.md` frontmatter holds `door-into-summer: command`, shown by its `name` and `description`. While none qualifies, the menu says so. Arrow keys move the selection, `Enter` or `Tab` complete, `Esc` closes.
+
+What the server does not serve yet reads as such: a post's metadata line and panel read `<field> unavailable`, an earlier attempt reads `image unavailable`, a message with no time reads `time unavailable`. A session that announces a generation in progress shows a spinner and an ASCII shape at the announced ratio, which stop while the server does not answer.
+
+```
+app/.build/debug/DoorIntoSummer send http://127.0.0.1:8765/ "@a instruction /option @b instruction"
+```
+
+sends one message through the same code as the chat bar and prints each session's message number.
+
 
 ## Review server
 
@@ -7,7 +28,7 @@ Door into Summer: a native macOS window where Gray reviews each visual an agent 
 python3 bin/review_window.py
 ```
 
-It serves the review page on `http://127.0.0.1:8765/`, the address the window loads. `python3 bin/review_window.py <port>` takes another port, `0` a free one, and it prints `serving: http://127.0.0.1:<port>/` once bound. Python 3.10 or later, standard library only, macOS, since it learns of every change on disk from a kqueue.
+It serves the review page on `http://127.0.0.1:8765/`, and the app reads its routes at that address. `python3 bin/review_window.py <port>` takes another port, `0` a free one, and it prints `serving: http://127.0.0.1:<port>/` once bound. Python 3.10 or later, standard library only, macOS, since it learns of every change on disk from a kqueue.
 
 It reads the sessions of hypnos under `${HYPNOS_HOME:-~/.hypnos}` and writes nothing there itself: the only contact is
 

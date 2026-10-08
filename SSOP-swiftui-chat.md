@@ -82,3 +82,6 @@ Batches:
 | validated posts | derived: a feedback "@session validé" on that attempt | PostView | none |
 
 ## Amendments
+- The name click carries only the session (`Chat.tagging`), and ChatBar applies `tagged(_:with:)` on its own text, since the bar owns the text.
+- `Pending` carries the number the send returned, so a push removes it; `Chat.load()` fetches `/cards` once for the `send` command line.
+- `instructions(in:)` scans words instead of a regular expression: lookbehind is unsupported and a global `Regex` is not `Sendable`.

@@ -16,8 +16,11 @@ public struct window<content_view: View>: Scene {
         .preferredColorScheme(.dark)
     }
     .windowStyle(.hiddenTitleBar)
+    .windowBackgroundDragBehavior(.enabled)
     .defaultWindowPlacement { _, context in
-      WindowPlacement(context.defaultDisplay.visibleRect.origin, size: context.defaultDisplay.visibleRect.size)
+      let screen = context.defaultDisplay.visibleRect
+      let size = CGSize(width: (screen.width * 2 / 3).rounded(), height: screen.height)
+      return WindowPlacement(CGPoint(x: screen.midX - size.width / 2, y: screen.minY), size: size)
     }
     .restorationBehavior(.disabled)
   }
