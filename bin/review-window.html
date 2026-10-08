@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review window</title>
+<style>
+  :root { color-scheme: light; }
+  html, body { margin: 0; background: #fff; color: #111; overflow-x: hidden; }
+  body { font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-weight: 500; font-size: 17px; margin: 0 0 24px; }
+  .empty { color: #777; }
+  article { margin: 0 0 48px; overflow-wrap: anywhere; }
+  h2 { font-weight: 500; font-size: 15px; margin: 0 0 12px; }
+  .images { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+  figure { margin: 0; }
+  img { display: block; width: 100%; height: auto; background: #f4f4f4; }
+  figcaption { color: #777; font-size: 13px; padding-top: 4px; }
+  .feedback { list-style: none; margin: 0 0 12px; padding: 0; }
+  .feedback li { display: flex; gap: 12px; justify-content: space-between; padding: 6px 0; border-top: 1px solid #eee; }
+  .feedback .text { white-space: pre-wrap; }
+  .progress { color: #777; font-size: 13px; flex: none; }
+  .progress span { display: none; }
+  li[data-progress=sent] [data-for=sent], li[data-progress=seen] [data-for=seen], li[data-progress=done] [data-for=done] { display: inline; }
+  li[data-progress=done] [data-for=done] { color: #111; }
+  textarea { box-sizing: border-box; width: 100%; min-height: 96px; padding: 8px; font: inherit; border: 1px solid #ccc; resize: vertical; }
+  .send { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+  button { font: inherit; padding: 6px 14px; border: 1px solid #111; background: #fff; cursor: pointer; }
+  button:disabled { color: #999; border-color: #ccc; cursor: default; }
+  output { color: #777; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Review window</h1>
+  <p class="empty" id="empty">No live image session.</p>
+  <section id="board"></section>
+</main>
+
+<template id="card">
+  <article>
+    <h2></h2>
+    <div class="images"></div>
+    <ol class="feedback"></ol>
+    <textarea placeholder="Feedback on the generation. Enter sends, Shift+Enter breaks the line."></textarea>
+    <div class="send">
+      <button type="button">Send</button>
+      <output class="refused" hidden></output>
+    </div>
+  </article>
+</template>
+
+<template id="image">
+  <figure><img alt=""><figcaption></figcaption></figure>
+</template>
+
+<template id="feedback">
+  <li><span class="text"></span><span class="progress"><span data-for="sent">Sent</span><span data-for="seen">Seen</span><span data-for="done">Done</span></span></li>
+</template>
+
+<script>
+const board = document.getElementById('board');
+const empty = document.getElementById('empty');
+const cardTemplate = document.getElementById('card');
+const imageTemplate = document.getElementById('image');
+const feedbackTemplate = document.getElementById('feedback');
+const cards = new Map();
+
+const titleOf = (card) => `${card.subject} · attempt ${card.attempt} · ${card.session}`;
+
+const figureOf = (image, slot) => {
+  const figure = imageTemplate.content.firstElementChild.cloneNode(true);
+  figure.dataset.slot = slot;
+  figure.querySelector('img').src = image.src;
+  figure.querySelector('img').alt = image.label;
+  figure.querySelector('figcaption').textContent = image.label;
+  return figure;
+};
+
+const itemOf = (feedback) => {
+  const item = feedbackTemplate.content.firstElementChild.cloneNode(true);
+  item.dataset.number = feedback.number;
+  item.dataset.progress = feedback.progress;
+  item.querySelector('.text').textContent = feedback.text;
+  return item;
+};
+
+const shownCard = (entry, card, signature) => {
+  entry.signature = signature;
+  entry.image = card.generation.label;
+  entry.node.querySelector('h2').textContent = titleOf(card);
+  const figures = card.original ? [figureOf(card.original, 'original')] : [];
+  figures.push(figureOf(card.generation, 'generation'));
+  entry.node.querySelector('.images').replaceChildren(...figures);
+  entry.node.querySelector('.feedback').replaceChildren(...card.feedback.map(itemOf));
+};
+
+const sentFeedback = async (entry) => {
+  const box = entry.node.querySelector('textarea');
+  const refused = entry.node.querySelector('.refused');
+  const button = entry.node.querySelector('button');
+  const text = box.value;
+  if (button.disabled || !text.trim()) return;
+  button.disabled = true;
+  refused.hidden = true;
+  try {
+    const response = await fetch('/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session: entry.session, image: entry.image, text }),
+    });
+    const answer = await response.json();
+    if (!response.ok) throw new Error(answer.error);
+    if (box.value === text) box.value = '';
+  } catch (error) {
+    refused.textContent = error.message;
+    refused.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+};
+
+const addedCard = (card, listed, index) => {
+  const node = cardTemplate.content.firstElementChild.cloneNode(true);
+  const entry = { node, session: card.session, signature: '', image: undefined };
+  node.dataset.session = card.session;
+  node.querySelector('button').addEventListener('click', () => sentFeedback(entry));
+  node.querySelector('textarea').addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    sentFeedback(entry);
+  });
+  const next = listed.slice(index + 1).map((other) => cards.get(other.session)).find(Boolean);
+  board.insertBefore(node, next ? next.node : null);
+  cards.set(card.session, entry);
+  return entry;
+};
+
+const shownCards = (listed) => {
+  const live = new Set(listed.map((card) => card.session));
+  for (const [session, entry] of cards) {
+    if (live.has(session)) continue;
+    entry.node.remove();
+    cards.delete(session);
+  }
+  listed.forEach((card, index) => {
+    const entry = cards.get(card.session) ?? addedCard(card, listed, index);
+    const signature = JSON.stringify(card);
+    if (entry.signature !== signature) shownCard(entry, card, signature);
+  });
+  empty.hidden = cards.size > 0;
+};
+
+new EventSource('/events').addEventListener('message', (event) => shownCards(JSON.parse(event.data)));
+</script>
+</body>
+</html>
