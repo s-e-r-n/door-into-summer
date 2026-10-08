@@ -7,6 +7,10 @@ Problem and decision are one line each. An error code, a trace id or a ticket nu
 
 | Date | Problem | Decision | Ref |
 | ---- | ------- | -------- | --- |
+| 2026-10-08 | The window template could be a Swift package dependency or a copy | Its single module file is copied into Sources/NativeWindow, verbatim, with no dependency on the template repository | macos_26_tahoe_native_ui_templates main 090290c |
+| 2026-10-08 | The copied file names its type `window` in snake case, against Swift conventions | The copy stays verbatim so a later sync is a plain diff, the app's own code follows Swift conventions | Sources/NativeWindow/window.swift |
+| 2026-10-08 | SwiftUI's WebView or WKWebView for the review page | SwiftUI WebView with WebPage, whose load throws when the server does not answer, so no WKWebView is needed | WebPage.NavigationError.failedProvisionalNavigation |
+| 2026-10-08 | App Transport Security could block plain http to 127.0.0.1 | Info.plist sets NSAllowsLocalNetworking | scripts/make_app.sh |
 | 2026-10-08 | Seen needs a signal of the session taking a feedback, without a new file in ~/.hypnos | Seen is the message in `handled/`, and the image session moves it there as soon as it reads it | |
 | 2026-10-08 | Done needs the attempt a feedback was given on, and the message line carries only the label | Done is images.json published after the move to `handled/`, both ctimes, so it survives a restart | |
 | 2026-10-08 | `hy-session.sh send` exits 1 when the doorbell fails, with the message already in the inbox | A refusal naming the waiting message answers 200, so a feedback is never sent twice | |
