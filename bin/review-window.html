@@ -108,8 +108,19 @@ const bubbleOf = (item) => (item.from === 'gray' ? saidOf(item.text, item.state,
 const landed = (entry, pending) =>
   entry.conversation.some((item) => item.from === 'gray' && item.number > pending.after && item.text === pending.text);
 
+const restoredCleared = (entry) => {
+  const restored = entry.restored;
+  if (!restored || !landed(entry, restored)) return;
+  entry.restored = undefined;
+  const box = entry.node.querySelector('textarea');
+  if (box.value !== restored.text) return;
+  box.value = '';
+  entry.node.querySelector('.refused').hidden = true;
+};
+
 const conversationShown = (entry) => {
   entry.pending = entry.pending.filter((pending) => !landed(entry, pending));
+  restoredCleared(entry);
   const bubbles = entry.conversation.map(bubbleOf);
   bubbles.push(...entry.pending.map((pending) => saidOf(pending.text, 'pending')));
   entry.node.querySelector('.conversation').replaceChildren(...bubbles);
@@ -154,7 +165,10 @@ const sentFeedback = async (entry) => {
     if (!response.ok) throw new Error(answer.error);
   } catch (error) {
     entry.pending = entry.pending.filter((other) => other !== pending);
-    if (box.value === '') box.value = text;
+    if (box.value === '') {
+      box.value = text;
+      entry.restored = pending;
+    }
     refused.textContent = error.message;
     refused.hidden = false;
     conversationShown(entry);
@@ -166,7 +180,7 @@ const sentFeedback = async (entry) => {
 
 const addedCard = (card, listed, index) => {
   const node = cardTemplate.content.firstElementChild.cloneNode(true);
-  const entry = { node, session: card.session, attempt: card.attempt, look: '', conversation: [], pending: [], sending: false };
+  const entry = { node, session: card.session, attempt: card.attempt, look: '', conversation: [], pending: [], restored: undefined, sending: false };
   node.dataset.session = card.session;
   node.querySelector('button').addEventListener('click', () => sentFeedback(entry));
   node.querySelector('textarea').addEventListener('keydown', (event) => {

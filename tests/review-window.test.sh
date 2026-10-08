@@ -330,6 +330,40 @@ rm -rf "$home/state/chair.meta" "$home/state/chair.inbox" "$home/data/chair"
 within "a session closed with a feedback pending loses its card" "$(seen_after "$written")" 1000
 expect "the other cards keep their bubbles" "$(conversation mug | jq length) $(conversation lamp | jq length)" "8 2"
 
+lost_answer() {
+  mkdir -p "$home/state/vase.inbox/handled"
+  ln -s "$$" "$home/state/vase.inbox/.lock"
+  typed vase "$1"
+  ab press Enter >/dev/null
+  sleep 0.5
+  stopped
+  for _ in $(seq 20); do [ "$(page 'String(!document.querySelector("article[data-session=vase] .refused").hidden)')" = true ] && break; sleep 0.1; done
+  [ -z "$2" ] || ab keyboard type "$2" >/dev/null
+  restored="$(box vase) $(conversation vase | jq length)"
+  rm "$home/state/vase.inbox/.lock"
+  landed_after "$(now_ms)" vase "$3" >/dev/null
+}
+
+live vase
+shown vase "a vase" 1 "$root/images/desk-1.svg"
+sleep 0.5
+lost_answer 'une seule fois' '' 1
+expect "the server dies before answering: the page puts the text back, no bubble yet" "$restored" '"une seule fois" 0'
+armed 'document.querySelector("article[data-session=vase] textarea").value === "" && document.querySelectorAll("article[data-session=vase] .said").length === 1'
+up="$(now_ms)"
+served
+within "once the server is back and the message shows as a bubble, the restored text leaves the box" "$(seen_after "$up")" 1000
+expect "the message was sent once, the refusal is gone" \
+  "$(messages vase) $(page 'String(document.querySelector("article[data-session=vase] .refused").hidden)') $(conversation vase | jq -c 'map(.[0])')" \
+  '1 true ["une seule fois"]'
+lost_answer 'encore une' ' corrigée' 2
+expect "the server dies again, and Gray edits the restored text" "$restored" '"encore une corrigée" 1'
+served
+sleep 1
+expect "an edited restored text stays in the box once the message shows" \
+  "$(box vase) $(conversation vase | jq -c 'map(.[0])')" '"encore une corrigée" ["une seule fois","encore une"]'
+rm -rf "$home/state/vase.meta" "$home/state/vase.inbox" "$home/data/vase"
+
 printf -- '-- what the server leaves\n'
 
 printf 'not a feedback\n' > "$home/state/mug.inbox/handled/900.msg"

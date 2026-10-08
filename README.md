@@ -28,7 +28,7 @@ Gray's feedbacks are bubbles on the right, in the order they were sent. Each car
 - the first: the message is in `state/<name>.inbox/`;
 - the second: the session moved it to `state/<name>.inbox/handled/`, it has read it.
 
-The session's answer is a bubble on the left, `attempt <n>`, once images.json reaches an attempt later than the one the feedbacks before it were given on. Every bubble and tick is read from the inbox and the current images.json, so a restart of the server or a reload of the page loses none.
+The session's answer is a bubble on the left, `attempt <n>`, once images.json reaches an attempt later than the one the feedbacks before it were given on. Every bubble and tick is read from the inbox and the current images.json, so a restart of the server or a reload of the page loses none. A send the server could not answer puts its text back in the box; once that message shows as a bubble all the same, the page clears the box, unless Gray has edited the text since.
 
 The second tick means read only if the image session moves a feedback to `handled/` as soon as it reads it, before generating. Its brief carries this line:
 
