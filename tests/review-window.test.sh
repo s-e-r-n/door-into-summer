@@ -10,6 +10,7 @@ server=""
 port=0
 trap '[ -z "$server" ] || kill "$server" 2>/dev/null; agent-browser --session "$browser" close >/dev/null 2>&1 || true; rm -rf "$root"' EXIT
 export HYPNOS_HOME="$home"
+export DOOR_INTO_SUMMER_SUPPORT="$root/support"
 export PYTHONDONTWRITEBYTECODE=1
 failures=0
 
@@ -144,6 +145,9 @@ expect "help gives the usage" "$(python3 "$repo/bin/review_window.py" --help | g
 expect "hy-session.sh of hypnos main is there to send" "$(test -f "$session_script" && grep -c '^#   hy-session.sh send <name> <message>' "$session_script")" 1
 
 mkdir -p "$home/state" "$home/data" "$root/images" "$root/cwd" "$root/stub"
+mkdir -p "$DOOR_INTO_SUMMER_SUPPORT"
+jq -n --arg gallery "$root/gallery" '{gallery: $gallery}' > "$DOOR_INTO_SUMMER_SUPPORT/config.json"
+python3 "$repo/bin/review_window.py" --setup > /dev/null
 cp -R "$repo/bin" "$root/bin"
 cp -R "$repo/bin" "$root/bin-next"
 sed -i '' 's/<html lang="en">/<html lang="en" data-next="">/' "$root/bin-next/review-window.html"

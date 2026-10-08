@@ -70,6 +70,7 @@ calls() {
 }
 
 mkdir -p "$home/state" "$home/data" "$root/stub" "$root/jobs" "$root/user"
+env HOME="$root/user" python3 "$repo/bin/review_window.py" --setup > /dev/null
 printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 --decode > "$root/fixture.png"
 cat > "$root/jobs/$recorded_job.json" <<'JOB'
 {
