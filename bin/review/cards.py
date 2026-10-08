@@ -1,5 +1,4 @@
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,7 +26,6 @@ class Card:
     attempt: int
     original: Image | None
     generation: Image
-    published_ns: int
 
 
 def one_line(label: object) -> bool:
@@ -55,9 +53,7 @@ def read_image(raw: object) -> Image | None:
 
 def read_card(path: Path) -> Card | None:
     try:
-        with open(path, "rb") as file:
-            published_ns = os.fstat(file.fileno()).st_ctime_ns
-            raw = json.loads(file.read())
+        raw = json.loads(path.read_bytes())
     except (OSError, ValueError):
         return None
     if not isinstance(raw, dict) or not isinstance(raw.get("subject"), str) or type(raw.get("attempt")) is not int:
@@ -66,7 +62,7 @@ def read_card(path: Path) -> Card | None:
     original = read_image(raw["original"]) if raw.get("original") is not None else None
     if generation is None or (raw.get("original") is not None and original is None):
         return None
-    return Card(raw["subject"], raw["attempt"], original, generation, published_ns)
+    return Card(raw["subject"], raw["attempt"], original, generation)
 
 
 def shown_image(name: str, slot: str, image: Image | None) -> dict | None:

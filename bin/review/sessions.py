@@ -8,12 +8,13 @@ home = Path(os.environ.get("HYPNOS_HOME") or Path.home() / ".hypnos")
 state = home / "state"
 data = home / "data"
 session_script = Path.home() / ".hypnos" / "bin" / "hy-session.sh"
-message_waits = re.compile(r"The message waits in .+\.msg, and the watcher rings again\.")
+message_sent = re.compile(r"^sent: (.+\.msg), doorbell ", re.MULTILINE)
+message_waits = re.compile(r"The message waits in (.+\.msg), and the watcher rings again\.")
 
 
 @dataclass(frozen=True)
 class Delivered:
-    note: str
+    message: Path
 
 
 @dataclass(frozen=True)
@@ -53,8 +54,7 @@ def send(name: str, message: str) -> Delivered | Refused:
         result = subprocess.run(["bash", str(session_script), "send", name, message], capture_output=True, text=True)
     except ValueError:
         return Refused("The text holds a character no message can carry.")
-    if result.returncode == 0:
-        return Delivered(result.stdout.strip())
-    if message_waits.search(result.stderr):
-        return Delivered(result.stderr.strip())
+    landed = message_sent.search(result.stdout) if result.returncode == 0 else message_waits.search(result.stderr)
+    if landed:
+        return Delivered(Path(landed.group(1)))
     return Refused(result.stderr.strip() or f"hy-session.sh send exited {result.returncode}.")

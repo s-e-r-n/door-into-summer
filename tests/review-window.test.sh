@@ -7,6 +7,7 @@ root="$(mktemp -d)"
 home="$root/home"
 browser="review-window-test-$$"
 server=""
+port=0
 trap '[ -z "$server" ] || kill "$server" 2>/dev/null; agent-browser --session "$browser" close >/dev/null 2>&1 || true; rm -rf "$root"' EXIT
 export HYPNOS_HOME="$home"
 export PYTHONDONTWRITEBYTECODE=1
@@ -43,13 +44,14 @@ page() {
 }
 
 served() {
-  (cd "$root/cwd" && exec env PATH="$root/stub:$PATH" python3 "$repo/bin/review_window.py" 0 > "$root/served" 2>&1) &
+  (cd "$root/cwd" && exec env PATH="$root/stub:$PATH" python3 "$repo/bin/review_window.py" "$port" > "$root/served" 2>&1) &
   server="$!"
   for _ in $(seq 50); do
     grep -q '^serving: ' "$root/served" 2>/dev/null && break
     sleep 0.1
   done
   url="$(sed -n 's#^serving: \(http://127\.0\.0\.1:[0-9]*\)/$#\1#p' "$root/served")"
+  port="${url##*:}"
 }
 
 stopped() {
@@ -69,7 +71,7 @@ shown() {
   local images="$home/data/$1/images.json"
   mkdir -p "$home/data/$1"
   jq -n --arg subject "$2" --argjson attempt "$3" --arg generation "$4" --arg original "${5:-}" \
-    '{subject: $subject, attempt: $attempt, generation: {label: "attempt \($attempt)", path: $generation}}
+    '{subject: $subject, attempt: $attempt, generation: {label: "generation \($attempt)", path: $generation}}
      + if $original == "" then {} else {original: {label: "original", path: $original}} end' > "$images.tmp"
   mv "$images.tmp" "$images"
 }
@@ -80,7 +82,7 @@ armed() {
 
 seen_after() {
   local seen=0
-  for _ in $(seq 30); do
+  for _ in $(seq 40); do
     seen="$(page 'String(window.seenAt)')"
     [ "$seen" = 0 ] || break
     sleep 0.1
@@ -90,7 +92,7 @@ seen_after() {
 
 landed_after() {
   for _ in $(seq 100); do
-    if [ "$(messages "$2")" != 0 ]; then
+    if [ "$(messages "$2")" -ge "$3" ]; then
       printf '%s' "$(($(now_ms) - $1))"
       return
     fi
@@ -103,8 +105,12 @@ messages() {
   find "$home/state/$1.inbox" -name '*.msg' 2>/dev/null | wc -l | tr -d ' '
 }
 
+taken() {
+  mv "$home/state/$1.inbox/$2.msg" "$home/state/$1.inbox/handled/"
+}
+
 posted() {
-  jq -n --arg session "$1" --arg image "$2" --arg text "$3" '{session: $session, image: $image, text: $text}' \
+  jq -n --arg session "$1" --argjson attempt "$2" --arg text "$3" '{session: $session, attempt: $attempt, text: $text}' \
     | curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data-binary @- "$url/feedback"
 }
 
@@ -112,8 +118,25 @@ paths() {
   find "$home" "$repo/bin" "$root/cwd" | grep -Ev "^$home/state/[a-z-]+\.inbox" | sort
 }
 
-feedback_of() {
-  page "JSON.stringify([...document.querySelectorAll('article[data-session=$1] .feedback li')].map((item) => [item.querySelector('.text').textContent, item.dataset.progress, item.querySelector('.progress').innerText]))"
+conversation() {
+  page "JSON.stringify([...document.querySelectorAll('article[data-session=$1] .conversation li')].map((bubble) => bubble.classList.contains('said') ? [bubble.querySelector('.text').textContent, [...bubble.querySelectorAll('.tick')].filter((tick) => getComputedStyle(tick).color !== 'rgba(255, 255, 255, 0.35)').length] : bubble.textContent))"
+}
+
+conversations() {
+  printf '%s %s %s' "$(conversation mug)" "$(conversation chair)" "$(conversation lamp)"
+}
+
+said_with() {
+  printf "[...document.querySelectorAll('article[data-session=%s] .said')].map((bubble) => bubble.dataset.state).join(' ') === '%s'" "$1" "$2"
+}
+
+typed() {
+  ab focus "article[data-session=$1] textarea" >/dev/null
+  ab keyboard type "$2" >/dev/null
+}
+
+box() {
+  page "JSON.stringify(document.querySelector('article[data-session=$1] textarea').value)"
 }
 
 expect "syntax" "$(for file in "$repo"/bin/review_window.py "$repo"/bin/review/*.py; do python3 -I -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' "$file" || echo "$file"; done; echo ok)" ok
@@ -130,7 +153,7 @@ fi
 exit 1
 STUB
 chmod +x "$root/stub/herdr"
-for image in mug-original mug-1 mug-2 chair-1 lamp-1; do
+for image in mug-original mug-1 mug-2 mug-3 chair-1 lamp-1 desk-1; do
   printf '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#%s"/></svg>\n' \
     "$(printf '%s' "$image" | md5 | cut -c1-6)" > "$root/images/$image.svg"
 done
@@ -146,102 +169,184 @@ served
 expect "the server binds 127.0.0.1 and prints its URL" "$(grep -c '^serving: http://127\.0\.0\.1:[0-9]*/$' "$root/served")" 1
 ab open "$url/" >/dev/null
 expect "the page opens headless on an empty board" "$(page 'String(document.getElementById("empty").hidden) + " " + document.querySelectorAll("article").length')" "false 0"
+expect "the page sets no background, dark color-scheme, light text" \
+  "$(page 'const html = getComputedStyle(document.documentElement), body = getComputedStyle(document.body); JSON.stringify([html.backgroundColor, body.backgroundColor, html.colorScheme, body.color])')" \
+  '["rgba(0, 0, 0, 0)","rgba(0, 0, 0, 0)","dark","rgb(242, 242, 242)"]'
 
 live chair
 armed 'document.querySelectorAll("article").length === 1'
 written="$(now_ms)"
 shown chair "an armchair" 1 "$root/images/chair-1.svg"
-within "4 a new card is pushed to the open page" "$(seen_after "$written")" 1000
+within "a new card is pushed to the open page" "$(seen_after "$written")" 1000
 live mug
 armed 'document.querySelectorAll("article").length === 2'
 written="$(now_ms)"
 shown mug "a coffee mug" 1 "$root/images/mug-1.svg" "$root/images/mug-original.svg"
-within "4 a second card is pushed to the open page" "$(seen_after "$written")" 1000
-expect "4 one card per live session with a valid images.json, newest first" \
-  "$(page '[...document.querySelectorAll("article h2")].map((title) => title.textContent).join(" | ")')" \
-  "a coffee mug · attempt 1 · mug | an armchair · attempt 1 · chair"
-geometry='const box = (session, slot) => document.querySelector(`article[data-session=${session}] figure[data-slot=${slot}]`).getBoundingClientRect(); const original = box("mug", "original"), generation = box("mug", "generation"), alone = box("chair", "generation")'
-expect "4 a card with an original shows it on the left, the generation on the right" \
-  "$(page "$geometry; String(original.left < generation.left && original.top === generation.top && generation.left >= original.right)")" true
-expect "4 a card without an original shows its generation alone on the left" \
-  "$(page "$geometry; String(alone.left === original.left && !document.querySelector('article[data-session=chair] figure[data-slot=original]'))")" true
-expect "4 the images load, served by path" \
-  "$(page '[...document.querySelectorAll("img")].map((image) => image.naturalWidth).join(" ")')" "400 400 400"
-expect "an image is served only for a live card" "$(curl -s -o /dev/null -w '%{http_code}' "$url/image/bare/generation")" 404
-expect "another Host is refused" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: example.com' "$url/cards")" 403
-
-ab focus 'article[data-session=mug] textarea' >/dev/null
-ab keyboard type 'ligne un, "citée"' >/dev/null
-ab press Shift+Enter >/dev/null
-expect "4 Shift+Enter breaks the line and sends nothing" \
-  "$(page 'JSON.stringify(document.querySelector("article[data-session=mug] textarea").value)') $(messages mug)" '"ligne un, \"citée\"\n" 0'
-ab keyboard type "ligne deux à gauche" >/dev/null
-armed 'document.querySelector("article[data-session=mug] .feedback li[data-number=\"1\"][data-progress=sent]")'
-pressed="$(now_ms)"
-ab press Enter >/dev/null
-within "1 Enter sends: the feedback lands in the inbox of the session" "$(landed_after "$pressed" mug)" 1000
-within "1 the card shows it Sent" "$(seen_after "$pressed")" 1000
-sleep 1
-printf 'feedback · attempt 1: ligne un, "citée"\nligne deux à gauche\n' > "$root/expected"
-expect "1 it lands exactly once, as hy-session.sh send writes it, the line break kept, byte for byte" \
-  "$(messages mug) $(cmp "$root/expected" "$home/state/mug.inbox/001.msg" && echo same)" "1 same"
-expect "1 the box is cleared and the feedback is listed on its card, Sent" \
-  "$(page 'JSON.stringify(document.querySelector("article[data-session=mug] textarea").value)') $(feedback_of mug)" \
-  '"" [["attempt 1: ligne un, \"citée\"\nligne deux à gauche","sent","Sent"]]'
-expect "1 no other session receives it" "$(messages chair)" 0
-
+within "a second card is pushed to the open page" "$(seen_after "$written")" 1000
 live lamp ringing
 shown lamp "a lamp" 1 "$root/images/lamp-1.svg"
-expect "1 a feedback whose doorbell fails still lands, and is answered as sent" "$(posted lamp 'attempt 1' 'plus de lumière')" 200
-expect "1 it lands once, so it is never sent twice" "$(messages lamp)" 1
-expect "a feedback on a session that is not live is refused" "$(posted gone 'attempt 1' 'text')" 422
-expect "a feedback with a blank text is refused" "$(posted mug 'attempt 1' '  ')" 400
+sleep 0.5
+expect "one card per live session with a valid images.json, newest first" \
+  "$(page '[...document.querySelectorAll("article h2")].map((title) => title.textContent).join(" | ")')" \
+  "a lamp · attempt 1 · lamp | a coffee mug · attempt 1 · mug | an armchair · attempt 1 · chair"
+geometry='const box = (session, slot) => document.querySelector(`article[data-session=${session}] figure[data-slot=${slot}]`).getBoundingClientRect(); const original = box("mug", "original"), generation = box("mug", "generation"), alone = box("chair", "generation")'
+expect "a card with an original shows it on the left, the generation on the right" \
+  "$(page "$geometry; String(original.left < generation.left && original.top === generation.top && generation.left >= original.right)")" true
+expect "a card without an original shows its generation alone on the left" \
+  "$(page "$geometry; String(alone.left === original.left && !document.querySelector('article[data-session=chair] figure[data-slot=original]'))")" true
+expect "the images load, served by path" \
+  "$(page '[...document.querySelectorAll("img")].map((image) => image.naturalWidth).join(" ")')" "400 400 400 400"
+expect "an image is served only for a live card" "$(curl -s -o /dev/null -w '%{http_code}' "$url/image/bare/generation")" 404
+expect "another Host is refused" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: example.com' "$url/cards")" 403
 expect "another Origin is refused" \
   "$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: http://example.com' -H 'Content-Type: application/json' --data '{}' "$url/feedback")" 403
-expect "a refusal writes no message" "$(messages mug) $(messages lamp) $(test -e "$home/state/gone.inbox" && echo gone)" "1 1 "
 
-armed 'document.querySelector("article[data-session=mug] .feedback li[data-number=\"1\"][data-progress=seen]")'
-taken="$(now_ms)"
-mv "$home/state/mug.inbox/001.msg" "$home/state/mug.inbox/handled/"
-within "2 Seen shows once the session takes the feedback into handled/" "$(seen_after "$taken")" 1000
-expect "2 the card reads Seen" "$(feedback_of mug | jq -c '.[0][1:]')" '["seen","Seen"]'
+printf -- '-- messaging\n'
 
-ab focus 'article[data-session=chair] textarea' >/dev/null
-ab keyboard type "en cours" >/dev/null
-page 'document.querySelector("article[data-session=mug]").kept = true; "marked"' >/dev/null
-armed 'document.querySelector("article[data-session=mug] h2").textContent === "a coffee mug · attempt 2 · mug" && document.querySelector("article[data-session=mug] .feedback li[data-number=\"1\"][data-progress=done]")'
+ab focus 'article[data-session=mug] textarea' >/dev/null
+ab press Enter >/dev/null
+typed mug '   '
+ab press Enter >/dev/null
+sleep 0.5
+expect "Enter on an empty or blank box sends nothing and shows no bubble" "$(messages mug) $(conversation mug)" "0 []"
+page 'document.querySelector("article[data-session=mug] textarea").value = ""; "cleared"' >/dev/null
+
+typed mug 'ligne un, "citée", déjà vu'
+ab press Shift+Enter >/dev/null
+expect "Shift+Enter breaks the line and sends nothing" "$(box mug) $(messages mug)" '"ligne un, \"citée\", déjà vu\n" 0'
+ab keyboard inserttext 'ligne deux 🌞🙂 à gauche' >/dev/null
+armed "$(said_with mug delivered)"
+pressed="$(now_ms)"
+ab press Enter >/dev/null
+within "Enter sends: the feedback lands in the inbox of the session" "$(landed_after "$pressed" mug 1)" 1000
+within "its bubble shows on the right with the first tick coloured" "$(seen_after "$pressed")" 1000
+sleep 1
+printf 'feedback · attempt 1: ligne un, "citée", déjà vu\nligne deux 🌞🙂 à gauche\n' > "$root/expected"
+expect "it lands exactly once, as hy-session.sh send writes it, line break, accents and emoji kept byte for byte" \
+  "$(messages mug) $(cmp "$root/expected" "$home/state/mug.inbox/001.msg" && echo same)" "1 same"
+expect "the box is cleared, the bubble holds the text byte for byte, one tick of two" \
+  "$(box mug) $(conversation mug)" '"" [["ligne un, \"citée\", déjà vu\nligne deux 🌞🙂 à gauche",1]]'
+expect "the bubble sits on the right of its card" \
+  "$(page 'const bubble = document.querySelector("article[data-session=mug] .said").getBoundingClientRect(), list = document.querySelector("article[data-session=mug] .conversation").getBoundingClientRect(); String(Math.round(bubble.right) === Math.round(list.right) && bubble.left > list.left)')" true
+expect "no other session receives it" "$(messages chair) $(messages lamp)" "0 0"
+
+typed mug 'plus chaud'
+armed "$(said_with mug 'delivered delivered')"
+pressed="$(now_ms)"
+ab press Enter >/dev/null
+within "two feedbacks in a row before the session reads the first: the second lands" "$(landed_after "$pressed" mug 2)" 1000
+within "both bubbles show in order, one tick each" "$(seen_after "$pressed")" 1000
+expect "two messages, in order, neither read" "$(messages mug) $(conversation mug | jq -c 'map(.[1])')" "2 [1,1]"
+
+armed "$(said_with mug 'read delivered')"
+read_at="$(now_ms)"
+taken mug 001
+within "the second tick colours once the session moves the message to handled/" "$(seen_after "$read_at")" 1000
+expect "the first bubble has two ticks, the second still one" "$(conversation mug | jq -c 'map(.[1])')" "[2,1]"
+taken mug 002
+
+typed mug 'et la anse'
+pressed="$(now_ms)"
+ab press Enter >/dev/null
+within "a feedback while the session is generating lands" "$(landed_after "$pressed" mug 3)" 1000
+armed 'document.querySelector("article[data-session=mug] .answered") && document.querySelector("article[data-session=mug] h2").textContent === "a coffee mug · attempt 2 · mug"'
 written="$(now_ms)"
 shown mug "a coffee mug" 2 "$root/images/mug-2.svg" "$root/images/mug-original.svg"
-within "3 Done and the next attempt show once images.json reaches it" "$(seen_after "$written")" 1000
-expect "3 the card reads Done" "$(feedback_of mug | jq -c '.[0][1:]')" '["done","Done"]'
-expect "4 the card is the same node, alone for its session, showing the new generation" \
-  "$(page 'const card = document.querySelectorAll("article[data-session=mug]"); String(card.length === 1 && card[0].kept === true && card[0].querySelector("figure[data-slot=generation] figcaption").textContent === "attempt 2")')" true
-expect "4 the text typed in another card is kept, focus kept" \
-  "$(page 'JSON.stringify([document.querySelector("article[data-session=chair] textarea").value, document.activeElement === document.querySelector("article[data-session=chair] textarea")])')" '["en cours",true]'
-expect "a hypnos follow-up in the same inbox is not shown as a feedback" \
-  "$(printf 'not a feedback\n' > "$home/state/mug.inbox/handled/002.msg"; sleep 0.5; feedback_of mug | jq length)" 1
+within "the session's answer, attempt 2, shows on the left once images.json reaches it" "$(seen_after "$written")" 1000
+expect "the answer follows every feedback given on attempt 1, the one sent while generating included" \
+  "$(conversation mug | jq -c 'map(if type == "array" then .[0] else . end)')" \
+  '["ligne un, \"citée\", déjà vu\nligne deux 🌞🙂 à gauche","plus chaud","et la anse","attempt 2"]'
+expect "the answer sits on the left of its card" \
+  "$(page 'const bubble = document.querySelector("article[data-session=mug] .answered").getBoundingClientRect(), list = document.querySelector("article[data-session=mug] .conversation").getBoundingClientRect(); String(Math.round(bubble.left) === Math.round(list.left) && bubble.right < list.right)')" true
+taken mug 003
+typed mug 'parfait, plus petit'
+ab press Enter >/dev/null
+landed_after "$(now_ms)" mug 4 >/dev/null
+taken mug 004
+shown mug "a coffee mug" 3 "$root/images/mug-3.svg" "$root/images/mug-original.svg"
+sleep 0.5
+expect "a second round reads feedback, attempt 2, feedback, attempt 3, every tick read" \
+  "$(conversation mug | jq -c 'map(if type == "array" then .[1] else . end)')" '[2,2,2,"attempt 2",2,"attempt 3"]'
+
+page 'for (const session of ["chair", "lamp"]) { const card = document.querySelector(`article[data-session=${session}]`); card.querySelector("textarea").value = `au même moment, ${session}`; } for (const session of ["chair", "lamp"]) document.querySelector(`article[data-session=${session}] button`).click(); "sent"' >/dev/null
+landed_after "$(now_ms)" chair 1 >/dev/null
+landed_after "$(now_ms)" lamp 1 >/dev/null
+sleep 1
+expect "feedbacks on two cards at the same moment land once each, each in its own inbox" \
+  "$(messages chair) $(messages lamp) $(grep -h '' "$home/state/chair.inbox/001.msg" "$home/state/lamp.inbox/001.msg" | tr '\n' '|')" \
+  "1 1 feedback · attempt 1: au même moment, chair|feedback · attempt 1: au même moment, lamp|"
+expect "each card shows its own bubble with its first tick" "$(conversation chair) $(conversation lamp)" \
+  '[["au même moment, chair",1]] [["au même moment, lamp",1]]'
+expect "the doorbell of lamp failed, its message waits in the inbox, and the card shows no refusal" \
+  "$(page 'String(document.querySelector("article[data-session=lamp] .refused").hidden)') $(env PATH="$root/stub:$PATH" bash "$session_script" send lamp 'probe' 2>&1 | grep -c 'Doorbell failed')" "true 1"
+rm "$home/state/lamp.inbox/002.msg"
+
+page 'const box = document.querySelector("article[data-session=lamp] textarea"); box.value = "deux fois"; for (const _ of [1, 2]) box.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})); "pressed"' >/dev/null
+ab press Enter >/dev/null
+sleep 1.5
+expect "a fast double Enter sends once" "$(messages lamp) $(conversation lamp | jq -c 'map(.[0])')" '2 ["au même moment, lamp","deux fois"]'
+
+printf -- '-- focus, scroll, restart\n'
+
+typed chair 'en cours de frappe'
+page 'const box = document.querySelector("article[data-session=chair] textarea"); box.setSelectionRange(3, 3); window.scrollTo(0, 120); "placed"' >/dev/null
+placed='JSON.stringify([document.activeElement === document.querySelector("article[data-session=chair] textarea"), document.activeElement.selectionStart, Math.round(window.scrollY), document.querySelector("article[data-session=chair] textarea").value])'
+expected_place="$(page "$placed")"
+expect "the place is set: focus in chair, caret at 3, scrolled" "$expected_place" '[true,3,120,"en cours de frappe"]'
+posted mug 3 'un détail' >/dev/null
+taken mug 005
+taken lamp 001
+live desk
+shown desk "a desk" 1 "$root/images/desk-1.svg"
+shown mug "a coffee mug" 4 "$root/images/mug-3.svg" "$root/images/mug-original.svg"
+sleep 1
+expect "a new card, a new bubble, a tick and an answer move neither the focus, the caret nor the scroll" "$(page "$placed")" "$expected_place"
+expect "they all showed meanwhile" "$(page 'String(document.querySelectorAll("article").length)') $(conversation mug | jq -c '.[-2:] | map(if type == "array" then .[1] else . end)')" '4 [2,"attempt 4"]'
+rm -rf "$home/state/desk.meta" "$home/data/desk"
+
+snapshot="$(conversations)"
+armed '!document.getElementById("unreachable").hidden'
+down="$(now_ms)"
+stopped
+within "the page says in one line that the server does not answer" "$(seen_after "$down")" 1000
+expect "the line is one line, and the cards stay" \
+  "$(page 'JSON.stringify([document.getElementById("unreachable").getClientRects().length, Math.round(document.getElementById("unreachable").getBoundingClientRect().height) <= 36, document.querySelectorAll("article").length])')" '[1,true,3]'
+armed 'document.getElementById("unreachable").hidden'
+up="$(now_ms)"
+served
+within "it recovers on its own once the server answers again" "$(seen_after "$up")" 2000
+expect "the restart keeps every bubble and tick" "$(conversations)" "$snapshot"
+expect "the restart keeps the typed text, the caret, the focus and the scroll" "$(page "$placed")" "$expected_place"
+ab open "$url/" >/dev/null
+sleep 0.5
+expect "a reload keeps every bubble and tick" "$(conversations)" "$snapshot"
+
+typed chair ' encore'
+ab press Enter >/dev/null
+landed_after "$(now_ms)" chair 2 >/dev/null
+armed '!document.querySelector("article[data-session=chair]")'
+written="$(now_ms)"
+rm -rf "$home/state/chair.meta" "$home/state/chair.inbox" "$home/data/chair"
+within "a session closed with a feedback pending loses its card" "$(seen_after "$written")" 1000
+expect "the other cards keep their bubbles" "$(conversation mug | jq length) $(conversation lamp | jq length)" "8 2"
+
+printf -- '-- what the server leaves\n'
+
+printf 'not a feedback\n' > "$home/state/mug.inbox/handled/900.msg"
+sleep 0.5
+expect "a hypnos follow-up in the same inbox is no bubble" "$(conversation mug | jq length)" 8
 rm "$home/data/mug/images.json"
 printf '{"subject": ' > "$home/data/mug/images.json"
 sleep 1
-expect "4 a missing or half written images.json leaves the card as it was" \
-  "$(page 'document.querySelector("article[data-session=mug] h2").textContent') $(feedback_of mug | jq -c '.[0][1]')" \
-  'a coffee mug · attempt 2 · mug "done"'
-expect "4 the page never reads /cards: every change is pushed" \
+expect "a missing or half written images.json leaves the card as it was" \
+  "$(page 'document.querySelector("article[data-session=mug] h2").textContent') $(conversation mug | jq length)" 'a coffee mug · attempt 4 · mug 8'
+expect "the page never reads /cards: every change is pushed" \
   "$(page 'String(performance.getEntriesByType("resource").filter((entry) => entry.name.includes("/cards")).length)')" 0
-
-shown mug "a coffee mug" 2 "$root/images/mug-2.svg" "$root/images/mug-original.svg"
-stopped
-served
-ab open "$url/" >/dev/null
-sleep 0.5
-expect "Sent, Seen and Done survive a restart of the server, read from disk" \
-  "$(feedback_of mug | jq -c 'map(.[1])') $(feedback_of lamp | jq -c 'map(.[1])')" '["done"] ["sent"]'
-
 armed '!document.querySelector("article[data-session=mug]")'
 written="$(now_ms)"
 rm -rf "$home/state/mug.meta" "$home/state/mug.inbox" "$home/data/mug"
-within "4 the card disappears once its session is closed" "$(seen_after "$written")" 1000
-rm -rf "$home/state/chair.meta" "$home/data/chair" "$home/state/lamp.meta" "$home/state/lamp.inbox" "$home/data/lamp"
+within "the card disappears once its session is closed" "$(seen_after "$written")" 1000
+rm -rf "$home/state/lamp.meta" "$home/state/lamp.inbox" "$home/data/lamp"
 sleep 1
 expect "no card is left" "$(curl -s "$url/cards")" "[]"
 expect "the server created nothing on disk beyond the inboxes" "$(comm -13 <(printf '%s\n' "$before") <(paths))" ""

@@ -5,25 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Review window</title>
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: dark; overflow-anchor: none; }
   html, body { margin: 0; color: #f2f2f2; overflow-x: hidden; }
   body { font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
   main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
   h1 { font-weight: 500; font-size: 17px; margin: 0 0 24px; }
   .empty { color: #8e8e8e; }
+  .unreachable { position: fixed; top: 0; left: 0; right: 0; margin: 0; padding: 6px 16px; background: #5c1a1a; color: #f2f2f2; font-size: 13px; }
   article { margin: 0 0 48px; overflow-wrap: anywhere; }
   h2 { font-weight: 500; font-size: 15px; margin: 0 0 12px; }
   .images { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
   figure { margin: 0; }
   img { display: block; width: 100%; height: auto; }
   figcaption { color: #8e8e8e; font-size: 13px; padding-top: 4px; }
-  .feedback { list-style: none; margin: 0 0 12px; padding: 0; }
-  .feedback li { display: flex; gap: 12px; justify-content: space-between; padding: 6px 0; border-top: 1px solid #333; }
-  .feedback .text { white-space: pre-wrap; }
-  .progress { color: #8e8e8e; font-size: 13px; flex: none; }
-  .progress span { display: none; }
-  li[data-progress=sent] [data-for=sent], li[data-progress=seen] [data-for=seen], li[data-progress=done] [data-for=done] { display: inline; }
-  li[data-progress=done] [data-for=done] { color: #f2f2f2; }
+  .conversation { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .said, .answered { max-width: 75%; padding: 6px 12px; border-radius: 16px; }
+  .said { align-self: flex-end; display: flex; gap: 8px; align-items: flex-end; background: #0a84ff; color: #fff; }
+  .said .text { white-space: pre-wrap; }
+  .ticks { flex: none; font-size: 12px; }
+  .tick { color: rgba(255, 255, 255, 0.35); }
+  .tick + .tick { margin-left: -4px; }
+  .said[data-state=delivered] .inbox, .said[data-state=read] .inbox, .said[data-state=read] .read { color: #b4f5b4; }
+  .answered { align-self: flex-start; background: #2c2c2e; }
   textarea { box-sizing: border-box; width: 100%; min-height: 96px; padding: 8px; font: inherit; color: inherit; background: transparent; border: 1px solid #555; resize: vertical; }
   .send { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
   button { font: inherit; color: inherit; padding: 6px 14px; border: 1px solid #f2f2f2; background: transparent; cursor: pointer; }
@@ -32,6 +35,7 @@
 </style>
 </head>
 <body>
+<p class="unreachable" id="unreachable" hidden>The review server does not answer. The page reconnects on its own.</p>
 <main>
   <h1>Review window</h1>
   <p class="empty" id="empty">No live image session.</p>
@@ -42,7 +46,7 @@
   <article>
     <h2></h2>
     <div class="images"></div>
-    <ol class="feedback"></ol>
+    <ol class="conversation"></ol>
     <textarea placeholder="Feedback on the generation. Enter sends, Shift+Enter breaks the line."></textarea>
     <div class="send">
       <button type="button">Send</button>
@@ -55,16 +59,22 @@
   <figure><img alt=""><figcaption></figcaption></figure>
 </template>
 
-<template id="feedback">
-  <li><span class="text"></span><span class="progress"><span data-for="sent">Sent</span><span data-for="seen">Seen</span><span data-for="done">Done</span></span></li>
+<template id="said">
+  <li class="said"><span class="text"></span><span class="ticks"><span class="tick inbox" title="In the session's inbox">✓</span><span class="tick read" title="Read by the session">✓</span></span></li>
+</template>
+
+<template id="answered">
+  <li class="answered">attempt <span class="attempt"></span></li>
 </template>
 
 <script>
 const board = document.getElementById('board');
 const empty = document.getElementById('empty');
+const unreachable = document.getElementById('unreachable');
 const cardTemplate = document.getElementById('card');
 const imageTemplate = document.getElementById('image');
-const feedbackTemplate = document.getElementById('feedback');
+const saidTemplate = document.getElementById('said');
+const answeredTemplate = document.getElementById('answered');
 const cards = new Map();
 
 const titleOf = (card) => `${card.subject} · attempt ${card.attempt} · ${card.session}`;
@@ -78,52 +88,85 @@ const figureOf = (image, slot) => {
   return figure;
 };
 
-const itemOf = (feedback) => {
-  const item = feedbackTemplate.content.firstElementChild.cloneNode(true);
-  item.dataset.number = feedback.number;
-  item.dataset.progress = feedback.progress;
-  item.querySelector('.text').textContent = feedback.text;
-  return item;
+const saidOf = (text, state, number) => {
+  const bubble = saidTemplate.content.firstElementChild.cloneNode(true);
+  bubble.dataset.state = state;
+  if (number !== undefined) bubble.dataset.number = number;
+  bubble.querySelector('.text').textContent = text;
+  return bubble;
 };
 
-const shownCard = (entry, card, signature) => {
-  entry.signature = signature;
-  entry.image = card.generation.label;
-  entry.node.querySelector('h2').textContent = titleOf(card);
-  const figures = card.original ? [figureOf(card.original, 'original')] : [];
-  figures.push(figureOf(card.generation, 'generation'));
-  entry.node.querySelector('.images').replaceChildren(...figures);
-  entry.node.querySelector('.feedback').replaceChildren(...card.feedback.map(itemOf));
+const answeredOf = (attempt) => {
+  const bubble = answeredTemplate.content.firstElementChild.cloneNode(true);
+  bubble.dataset.attempt = attempt;
+  bubble.querySelector('.attempt').textContent = attempt;
+  return bubble;
 };
+
+const bubbleOf = (item) => (item.from === 'gray' ? saidOf(item.text, item.state, item.number) : answeredOf(item.attempt));
+
+const landed = (entry, pending) =>
+  entry.conversation.some((item) => item.from === 'gray' && item.number > pending.after && item.text === pending.text);
+
+const conversationShown = (entry) => {
+  entry.pending = entry.pending.filter((pending) => !landed(entry, pending));
+  const bubbles = entry.conversation.map(bubbleOf);
+  bubbles.push(...entry.pending.map((pending) => saidOf(pending.text, 'pending')));
+  entry.node.querySelector('.conversation').replaceChildren(...bubbles);
+};
+
+const shownCard = (entry, card) => {
+  const look = JSON.stringify([titleOf(card), card.original, card.generation]);
+  entry.attempt = card.attempt;
+  entry.conversation = card.conversation;
+  if (entry.look !== look) {
+    entry.look = look;
+    entry.node.querySelector('h2').textContent = titleOf(card);
+    const figures = card.original ? [figureOf(card.original, 'original')] : [];
+    figures.push(figureOf(card.generation, 'generation'));
+    entry.node.querySelector('.images').replaceChildren(...figures);
+  }
+  conversationShown(entry);
+};
+
+const lastNumber = (entry) => Math.max(0, ...entry.conversation.filter((item) => item.from === 'gray').map((item) => item.number));
 
 const sentFeedback = async (entry) => {
   const box = entry.node.querySelector('textarea');
   const refused = entry.node.querySelector('.refused');
   const button = entry.node.querySelector('button');
   const text = box.value;
-  if (button.disabled || !text.trim()) return;
+  if (entry.sending || !text.trim()) return;
+  const pending = { text, after: lastNumber(entry) };
+  entry.sending = true;
   button.disabled = true;
   refused.hidden = true;
+  entry.pending.push(pending);
+  box.value = '';
+  conversationShown(entry);
   try {
     const response = await fetch('/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session: entry.session, image: entry.image, text }),
+      body: JSON.stringify({ session: entry.session, attempt: entry.attempt, text }),
     });
     const answer = await response.json();
     if (!response.ok) throw new Error(answer.error);
-    if (box.value === text) box.value = '';
   } catch (error) {
+    entry.pending = entry.pending.filter((other) => other !== pending);
+    if (box.value === '') box.value = text;
     refused.textContent = error.message;
     refused.hidden = false;
+    conversationShown(entry);
   } finally {
+    entry.sending = false;
     button.disabled = false;
   }
 };
 
 const addedCard = (card, listed, index) => {
   const node = cardTemplate.content.firstElementChild.cloneNode(true);
-  const entry = { node, session: card.session, signature: '', image: undefined };
+  const entry = { node, session: card.session, attempt: card.attempt, look: '', conversation: [], pending: [], sending: false };
   node.dataset.session = card.session;
   node.querySelector('button').addEventListener('click', () => sentFeedback(entry));
   node.querySelector('textarea').addEventListener('keydown', (event) => {
@@ -144,15 +187,25 @@ const shownCards = (listed) => {
     entry.node.remove();
     cards.delete(session);
   }
-  listed.forEach((card, index) => {
-    const entry = cards.get(card.session) ?? addedCard(card, listed, index);
-    const signature = JSON.stringify(card);
-    if (entry.signature !== signature) shownCard(entry, card, signature);
-  });
+  listed.forEach((card, index) => shownCard(cards.get(card.session) ?? addedCard(card, listed, index), card));
   empty.hidden = cards.size > 0;
 };
 
-new EventSource('/events').addEventListener('message', (event) => shownCards(JSON.parse(event.data)));
+const listened = () => {
+  const events = new EventSource('/events');
+  events.addEventListener('open', () => { unreachable.hidden = true; });
+  events.addEventListener('message', (event) => {
+    unreachable.hidden = true;
+    shownCards(JSON.parse(event.data));
+  });
+  events.addEventListener('error', () => {
+    unreachable.hidden = false;
+    if (events.readyState !== EventSource.CLOSED) return;
+    setTimeout(listened, 1000);
+  });
+};
+
+listened();
 </script>
 </body>
 </html>
