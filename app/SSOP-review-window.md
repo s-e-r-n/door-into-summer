@@ -44,3 +44,4 @@ Sort :
 | The `ReviewPage` instance | `ReviewPageView`, `@State` | `ReviewPageView` | `ReviewPageView` |
 
 ## Amendments
+- The template renamed its product `window` and its public type `window` before the copy, so the copy is `Sources/NativeWindow/window.swift` and the app calls `window { }` instead of `door_into_summer_window { }`.
