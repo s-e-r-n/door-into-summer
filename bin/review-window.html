@@ -144,10 +144,10 @@ const answeredOf = (attempt) => {
   return bubble;
 };
 
-const bubbleOf = (item) => (item.from === 'gray' ? saidOf(item.text, item.state, item.number) : answeredOf(item.attempt));
+const bubbleOf = (item) => (item.from === 'reviewer' ? saidOf(item.text, item.state, item.number) : answeredOf(item.attempt));
 
 const landed = (entry, pending) =>
-  entry.conversation.some((item) => item.from === 'gray' && item.number > pending.after && item.text === pending.text);
+  entry.conversation.some((item) => item.from === 'reviewer' && item.number > pending.after && item.text === pending.text);
 
 const restoredCleared = (entry) => {
   const restored = entry.restored;
@@ -181,7 +181,7 @@ const shownCard = (entry, card) => {
   conversationShown(entry);
 };
 
-const lastNumber = (entry) => Math.max(0, ...entry.conversation.filter((item) => item.from === 'gray').map((item) => item.number));
+const lastNumber = (entry) => Math.max(0, ...entry.conversation.filter((item) => item.from === 'reviewer').map((item) => item.number));
 
 const sentFeedback = async (entry) => {
   const box = entry.node.querySelector('textarea');

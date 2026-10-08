@@ -1,9 +1,11 @@
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from review import sessions
+from review.cards import iso_time
 
 feedback_line = re.compile(r"\Afeedback · attempt (\d+): (.*?)\n?\Z", re.DOTALL)
 
@@ -14,6 +16,7 @@ class Said:
     attempt: int
     text: str
     state: Literal["delivered", "read"]
+    sent_at: float
 
 
 @dataclass(frozen=True)
@@ -28,13 +31,15 @@ def send_feedback(name: str, attempt: int, text: str) -> int | sessions.Refused:
 
 def read_said(message: Path) -> Said | None:
     try:
-        found = feedback_line.match(message.read_text())
+        with message.open() as file:
+            found = feedback_line.match(file.read())
+            sent_at = os.fstat(file.fileno()).st_mtime
     except (OSError, ValueError):
         return None
     if found is None:
         return None
     state = "read" if message.parent.name == "handled" else "delivered"
-    return Said(int(message.stem), int(found.group(1)), found.group(2), state)
+    return Said(int(message.stem), int(found.group(1)), found.group(2), state, sent_at)
 
 
 def messages(inbox: Path) -> list[Path]:
@@ -67,4 +72,5 @@ def conversation_of(name: str, attempt: int) -> list[Said | Answered]:
 def shown(item: Said | Answered) -> dict:
     if isinstance(item, Answered):
         return {"from": "session", "attempt": item.attempt}
-    return {"from": "gray", "number": item.number, "attempt": item.attempt, "text": item.text, "state": item.state}
+    return {"from": "reviewer", "number": item.number, "attempt": item.attempt, "text": item.text, "state": item.state,
+            "sent_at": iso_time(item.sent_at)}

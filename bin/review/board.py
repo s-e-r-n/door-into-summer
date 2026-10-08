@@ -3,12 +3,15 @@ import threading
 from review import sessions
 from review.cards import Card, local_path, read_card, shown_card
 from review.conversation import conversation_of, shown as shown_item
+from review.jobs import shown_job
 
 keepalive_seconds = 15
 
 
 def shown(name: str, card: Card) -> dict:
-    return shown_card(name, card) | {"conversation": [shown_item(item) for item in conversation_of(name, card.attempt)]}
+    job = shown_job(card.job) if card.job is not None else None
+    conversation = [shown_item(item) for item in conversation_of(name, card.attempt)]
+    return shown_card(name, card) | ({} if job is None else {"job": job}) | {"conversation": conversation}
 
 
 class Board:
