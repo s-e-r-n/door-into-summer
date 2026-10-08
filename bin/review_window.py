@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import http.server
 import json
 import mimetypes
@@ -20,6 +21,16 @@ page = Path(__file__).resolve().parent / "review-window.html"
 default_port = 8765
 body_limit = 1 << 20
 retry_ms = 500
+version_slot = b'<meta name="page-version" content="">'
+
+
+def page_version(template: bytes) -> str:
+    return hashlib.sha256(template).hexdigest()[:16]
+
+
+def served_page() -> bytes:
+    template = page.read_bytes()
+    return template.replace(version_slot, f'<meta name="page-version" content="{page_version(template)}">'.encode())
 
 
 def parsed_request(body: bytes) -> tuple[str, int, str] | str:
@@ -56,7 +67,7 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
                 return
             route = self.path.split("?", 1)[0]
             if route == "/":
-                self.answer(200, "text/html; charset=utf-8", page.read_bytes())
+                self.answer(200, "text/html; charset=utf-8", served_page())
             elif route == "/cards":
                 self.answer(200, "application/json", json.dumps(board.latest()[1]).encode())
             elif route == "/events":
@@ -89,7 +100,8 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
             self.end_headers()
             version, shown = board.latest()
             try:
-                self.wfile.write(f"retry: {retry_ms}\ndata: {json.dumps(shown)}\n\n".encode())
+                announced = f"retry: {retry_ms}\nevent: page\ndata: {page_version(page.read_bytes())}\n\n"
+                self.wfile.write(f"{announced}data: {json.dumps(shown)}\n\n".encode())
                 self.wfile.flush()
                 while True:
                     latest, shown = board.next_after(version)

@@ -44,7 +44,7 @@ page() {
 }
 
 served() {
-  (cd "$root/cwd" && exec env PATH="$root/stub:$PATH" python3 "$repo/bin/review_window.py" "$port" > "$root/served" 2>&1) &
+  (cd "$root/cwd" && exec env PATH="$root/stub:$PATH" python3 "$root/${1:-bin}/review_window.py" "$port" > "$root/served" 2>&1) &
   server="$!"
   for _ in $(seq 50); do
     grep -q '^serving: ' "$root/served" 2>/dev/null && break
@@ -115,7 +115,7 @@ posted() {
 }
 
 paths() {
-  find "$home" "$repo/bin" "$root/cwd" | grep -Ev "^$home/state/[a-z-]+\.inbox" | sort
+  find "$home" "$root/bin" "$root/bin-next" "$root/cwd" | grep -Ev "^$home/state/[a-z-]+\.inbox" | sort
 }
 
 conversation() {
@@ -144,6 +144,9 @@ expect "help gives the usage" "$(python3 "$repo/bin/review_window.py" --help | g
 expect "hy-session.sh of hypnos main is there to send" "$(test -f "$session_script" && grep -c '^#   hy-session.sh send <name> <message>' "$session_script")" 1
 
 mkdir -p "$home/state" "$home/data" "$root/images" "$root/cwd" "$root/stub"
+cp -R "$repo/bin" "$root/bin"
+cp -R "$repo/bin" "$root/bin-next"
+sed -i '' 's/<html lang="en">/<html lang="en" data-next="">/' "$root/bin-next/review-window.html"
 cat > "$root/stub/herdr" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1 $2 $3" = "pane read ringing" ]; then
@@ -305,6 +308,7 @@ expect "they all showed meanwhile" "$(page 'String(document.querySelectorAll("ar
 rm -rf "$home/state/desk.meta" "$home/data/desk"
 
 snapshot="$(conversations)"
+page 'window.sameDocument = true; "marked"' >/dev/null
 armed '!document.getElementById("unreachable").hidden'
 down="$(now_ms)"
 stopped
@@ -317,9 +321,32 @@ served
 within "it recovers on its own once the server answers again" "$(seen_after "$up")" 2000
 expect "the restart keeps every bubble and tick" "$(conversations)" "$snapshot"
 expect "the restart keeps the typed text, the caret, the focus and the scroll" "$(page "$placed")" "$expected_place"
+expect "a server serving the same page version does not reload it" "$(page 'String(window.sameDocument === true)')" true
 ab open "$url/" >/dev/null
 sleep 0.5
 expect "a reload keeps every bubble and tick" "$(conversations)" "$snapshot"
+
+version="$(python3 -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest()[:16])' "$root/bin/review-window.html")"
+expect "the page carries the version of the HTML it was served from" "$(page 'document.querySelector("meta[name=page-version]").content')" "$version"
+typed chair 'brouillon à garder'
+page 'document.querySelector("article[data-session=chair] textarea").setSelectionRange(4, 4); window.scrollTo(0, 120); window.sameDocument = true; "placed"' >/dev/null
+expected_place="$(page "$placed")"
+stopped
+up="$(now_ms)"
+served bin-next
+reloaded=never
+for _ in $(seq 40); do
+  if [ "$(page 'String(document.documentElement.dataset.next !== undefined && document.querySelectorAll("article").length === 3)' 2>/dev/null)" = true ]; then
+    reloaded="$(($(now_ms) - up))"
+    break
+  fi
+  sleep 0.1
+done
+within "a server serving a new page version makes the page reload itself" "$reloaded" 2000
+expect "it is a new document" "$(page 'String(window.sameDocument === undefined)')" true
+expect "the reload keeps the typed text, the caret, the focus and the scroll" "$(page "$placed")" "$expected_place"
+expect "the reload keeps every bubble and tick" "$(conversations)" "$snapshot"
+page 'document.querySelector("article[data-session=chair] textarea").value = ""; "cleared"' >/dev/null
 
 typed chair ' encore'
 ab press Enter >/dev/null
@@ -351,14 +378,14 @@ lost_answer 'une seule fois' '' 1
 expect "the server dies before answering: the page puts the text back, no bubble yet" "$restored" '"une seule fois" 0'
 armed 'document.querySelector("article[data-session=vase] textarea").value === "" && document.querySelectorAll("article[data-session=vase] .said").length === 1'
 up="$(now_ms)"
-served
+served bin-next
 within "once the server is back and the message shows as a bubble, the restored text leaves the box" "$(seen_after "$up")" 1000
 expect "the message was sent once, the refusal is gone" \
   "$(messages vase) $(page 'String(document.querySelector("article[data-session=vase] .refused").hidden)') $(conversation vase | jq -c 'map(.[0])')" \
   '1 true ["une seule fois"]'
 lost_answer 'encore une' ' corrigée' 2
 expect "the server dies again, and Gray edits the restored text" "$restored" '"encore une corrigée" 1'
-served
+served bin-next
 sleep 1
 expect "an edited restored text stays in the box once the message shows" \
   "$(box vase) $(conversation vase | jq -c 'map(.[0])')" '"encore une corrigée" ["une seule fois","encore une"]'
@@ -385,7 +412,7 @@ sleep 1
 expect "no card is left" "$(curl -s "$url/cards")" "[]"
 expect "the server created nothing on disk beyond the inboxes" "$(comm -13 <(printf '%s\n' "$before") <(paths))" ""
 expect "the server changed no file beyond the inboxes" \
-  "$(find "$home" "$repo/bin" "$root/cwd" ! -type d -newer "$marker" | grep -Ev "^$home/state/[a-z-]+\.inbox")" ""
+  "$(find "$home" "$root/bin" "$root/bin-next" "$root/cwd" ! -type d -newer "$marker" | grep -Ev "^$home/state/[a-z-]+\.inbox")" ""
 stopped
 
 if [ "$failures" = 0 ]; then

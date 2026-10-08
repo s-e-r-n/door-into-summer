@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="page-version" content="">
 <title>Review window</title>
 <style>
   :root { color-scheme: dark; overflow-anchor: none; }
@@ -76,6 +77,46 @@ const imageTemplate = document.getElementById('image');
 const saidTemplate = document.getElementById('said');
 const answeredTemplate = document.getElementById('answered');
 const cards = new Map();
+const pageVersion = document.querySelector('meta[name=page-version]').content;
+const placeKey = 'review-window-place';
+
+const takenPlace = () => {
+  try {
+    const kept = JSON.parse(sessionStorage.getItem(placeKey) ?? 'null');
+    sessionStorage.removeItem(placeKey);
+    return kept;
+  } catch {
+    return null;
+  }
+};
+
+let place = takenPlace();
+
+const reloadedInPlace = () => {
+  const drafts = Object.fromEntries([...cards].map(([session, entry]) => [session, entry.node.querySelector('textarea').value]));
+  const focused = [...cards].find(([, entry]) => entry.node.querySelector('textarea') === document.activeElement);
+  const restored = Object.fromEntries([...cards].filter(([, entry]) => entry.restored).map(([session, entry]) => [session, entry.restored]));
+  const kept = { drafts, restored, focused: focused ? focused[0] : null, caret: focused ? document.activeElement.selectionStart : 0, scroll: window.scrollY };
+  try {
+    sessionStorage.setItem(placeKey, JSON.stringify(kept));
+  } catch {}
+  location.reload();
+};
+
+const placeRestored = () => {
+  if (!place) return;
+  for (const [session, entry] of cards) {
+    const box = entry.node.querySelector('textarea');
+    box.value = place.drafts[session] ?? '';
+    entry.restored = place.restored[session];
+    restoredCleared(entry);
+    if (place.focused !== session) continue;
+    box.focus({ preventScroll: true });
+    box.setSelectionRange(place.caret, place.caret);
+  }
+  window.scrollTo(0, place.scroll);
+  place = null;
+};
 
 const titleOf = (card) => `${card.subject} · attempt ${card.attempt} · ${card.session}`;
 
@@ -203,11 +244,15 @@ const shownCards = (listed) => {
   }
   listed.forEach((card, index) => shownCard(cards.get(card.session) ?? addedCard(card, listed, index), card));
   empty.hidden = cards.size > 0;
+  placeRestored();
 };
 
 const listened = () => {
   const events = new EventSource('/events');
   events.addEventListener('open', () => { unreachable.hidden = true; });
+  events.addEventListener('page', (event) => {
+    if (pageVersion !== '' && event.data !== pageVersion) reloadedInPlace();
+  });
   events.addEventListener('message', (event) => {
     unreachable.hidden = true;
     shownCards(JSON.parse(event.data));
