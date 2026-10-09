@@ -47,7 +47,7 @@ final class Chat {
             if case .lost = event {
                 connection = .lost
             } else {
-                if let delivery = thread.apply(event) {
+                for delivery in thread.apply(event) {
                     notifier?.announce(delivery)
                 }
                 connection = .live

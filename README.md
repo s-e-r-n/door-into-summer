@@ -50,7 +50,7 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
    exit 2   unreadable: <path>: <reason>, on stderr
    ```
 6. Help: `Door into Summer Help`, the one item of the Help menu, opens a short guide: how the chat works, then each command and shortcut of the chat.
-7. Notifications: each generation a session delivers, its first included, shows one macOS notification, `@<session>` over its subject and `image generation <n>`, with the Blow sound, while the app is not frontmost. A click brings the app forward on that post. macOS asks to allow them the first time the chat opens.
+7. Notifications: each generation a session delivers, its first included, shows one macOS notification, `@<session>` over its subject and `image generation <n>`, with the Blow sound, while the app is not frontmost. A generation that launches the app notifies too: the first `ready` after the launch notifies each card whose attempt was delivered at most 60 s before the launch, or after it. A click brings the app forward on that post. macOS asks to allow them the first time the chat opens, and a notification waits for that answer.
 
 ## Reference
 

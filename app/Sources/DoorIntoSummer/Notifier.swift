@@ -9,15 +9,17 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private let center: UNUserNotificationCenter
+    private let allowed: Task<Bool, Never>
     private let opened: @MainActor (String, Int) -> Void
 
     init?(opened: @escaping @MainActor (String, Int) -> Void) {
         guard Bundle.main.bundleIdentifier != nil else { return nil }
-        center = .current()
+        let center = UNUserNotificationCenter.current()
+        self.center = center
+        allowed = Task { (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false }
         self.opened = opened
         super.init()
         center.delegate = self
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     func announce(_ delivery: Delivery) {
@@ -27,7 +29,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.threadIdentifier = delivery.session
         content.sound = UNNotificationSound(named: UNNotificationSoundName("Blow.aiff"))
         content.userInfo = [Key.session: delivery.session, Key.attempt: delivery.attempt]
-        center.add(UNNotificationRequest(identifier: "\(delivery.session)@\(delivery.attempt)", content: content, trigger: nil), withCompletionHandler: nil)
+        let request = UNNotificationRequest(identifier: "\(delivery.session)@\(delivery.attempt)", content: content, trigger: nil)
+        Task {
+            if await allowed.value {
+                try? await center.add(request)
+            }
+        }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {

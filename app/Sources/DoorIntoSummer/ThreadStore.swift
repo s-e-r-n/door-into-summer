@@ -5,6 +5,12 @@ struct Delivery: Equatable, Sendable {
     let session: String
     let subject: String
     let attempt: Int
+
+    init(of card: Card) {
+        session = card.session
+        subject = card.subject
+        attempt = card.attempt
+    }
 }
 
 protocol Settled: AnyObject {}
@@ -150,6 +156,7 @@ enum RowModel {
 @Observable
 final class ThreadStore {
     static let postsPerPage = 5
+    private static let launchWindow: TimeInterval = 60
 
     private(set) var ids: [String] = []
     private(set) var earlierPages = 0
@@ -159,6 +166,7 @@ final class ThreadStore {
     @ObservationIgnored private(set) var pending: [Pending] = []
     @ObservationIgnored private var validatedIDs: Set<String> = []
     @ObservationIgnored private var inspectedID: String?
+    @ObservationIgnored private var firstReadySince: Date? = .now - ThreadStore.launchWindow
 
     var shownIDs: ArraySlice<String> {
         ids[pageStart...]
@@ -204,14 +212,16 @@ final class ThreadStore {
     }
 
     @discardableResult
-    func apply(_ event: ServerEvent) -> Delivery? {
-        var delivery: Delivery?
+    func apply(_ event: ServerEvent) -> [Delivery] {
+        var deliveries: [Delivery] = []
         switch event {
         case .ready(let listed):
+            deliveries = firstReadySince.map { since in listed.filter { delivered($0, since: since) }.map(Delivery.init(of:)) } ?? []
+            firstReadySince = nil
             cards = listed
         case .sessionUpdate(let card):
             let index = cards.firstIndex { $0.session == card.session }
-            delivery = delivered(from: index.map { cards[$0] }, to: card)
+            deliveries = generated(from: index.map { cards[$0] }, to: card) ? [Delivery(of: card)] : []
             if let index {
                 cards[index] = card
             } else {
@@ -220,17 +230,21 @@ final class ThreadStore {
         case .sessionDelete(let session):
             cards.removeAll { $0.session == session }
         case .lost:
-            return nil
+            return []
         }
         let known = Set(cards.flatMap { card in card.feedbacks.map { "\(card.session)#\($0.number)" } })
         pending.removeAll { sent in sent.number.map { known.contains("\(sent.session)#\($0)") } ?? false }
         reconcile()
-        return delivery
+        return deliveries
     }
 
-    private func delivered(from held: Card?, to card: Card) -> Delivery? {
-        let generated = held.map { $0.working != nil && card.attempt > $0.attempt } ?? true
-        return generated ? Delivery(session: card.session, subject: card.subject, attempt: card.attempt) : nil
+    private func generated(from held: Card?, to card: Card) -> Bool {
+        held.map { $0.working != nil && card.attempt > $0.attempt } ?? true
+    }
+
+    private func delivered(_ card: Card, since moment: Date) -> Bool {
+        let shown = card.answers.last { $0.attempt == card.attempt }
+        return shown?.seen.map { $0.at >= moment } ?? false
     }
 
     func place(_ sent: Pending) {
