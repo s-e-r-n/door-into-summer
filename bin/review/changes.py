@@ -30,11 +30,12 @@ def watch(paths: Callable[[], list[Watched]], on_change: Callable[[set[str] | No
     opened: dict[int, Watched] = {}
     names: set[str] | None = None
     while True:
-        stale = [fd for fd, watched in opened.items() if names is None or watched.session in names]
+        roots = {watched for watched in opened.values() if watched.session is None}
+        stale = [fd for fd, watched in opened.items() if watched not in roots and (names is None or watched.session in names)]
         for fd in stale:
             os.close(fd)
             del opened[fd]
-        opened |= registered(queue, [watched for watched in paths() if names is None or watched.session in names])
+        opened |= registered(queue, [watched for watched in paths() if watched not in roots and (names is None or watched.session in names)])
         on_change(names)
         fired = {opened[event.ident].session for event in queue.control(None, 64, None) if event.ident in opened}
         names = None if not fired or None in fired else fired
