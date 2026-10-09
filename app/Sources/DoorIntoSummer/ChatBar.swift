@@ -62,7 +62,7 @@ struct ChatBar: View {
             if let attached = chat.attached {
                 HStack(spacing: 8) {
                     ReferenceLine(reference: attached, thumbnail: 20)
-                    Button("×") { chat.detach() }.buttonStyle(.plain).foregroundStyle(Color.tertiaryText)
+                    Button("×") { chat.detach() }.buttonStyle(.pointing).foregroundStyle(Color.tertiaryText)
                 }
                 .frame(maxWidth: Layout.barWidth / 2, alignment: .leading)
             }
