@@ -33,22 +33,23 @@ struct MetadataPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text("@\(post.session)").font(.monoItalic).textSelection(.enabled)
-                    Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+                    Text("@\(post.session)").font(.monoItalic)
+                    Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText)
                     Spacer()
-                    Button("×", action: close).buttonStyle(.plain).foregroundStyle(Color.tertiaryText)
+                    Button("×", action: close).buttonStyle(.plain).foregroundStyle(Color.tertiaryText).textSelection(.disabled)
                 }
                 Grid(alignment: .topLeading, horizontalSpacing: 7, verticalSpacing: 6) {
                     ForEach(fields(of: post)) { field in
                         GridRow {
-                            Text(field.key).foregroundStyle(Color.tertiaryText).lineLimit(1).textSelection(.enabled).frame(width: 100, alignment: .leading)
-                            Text(field.value).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                            Text(field.key).foregroundStyle(Color.tertiaryText).lineLimit(1).frame(width: 100, alignment: .leading)
+                            Text(field.value).frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }
             }
             .padding(EdgeInsets(top: Layout.titleBarHeight, leading: 24, bottom: 32, trailing: 24))
             .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
         }
         .scrollIndicators(.hidden)
         .foregroundStyle(Color.foreground)

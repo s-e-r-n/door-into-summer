@@ -16,7 +16,6 @@ struct ChatView: View {
         }
         .animation(Layout.panelMotion, value: open)
         .overlay(alignment: .top) { TitleBar() }
-        .background { WindowChrome().frame(width: 0, height: 0) }
         .font(.mono)
         .foregroundStyle(Color.foreground)
         .background(Color.desk)
@@ -38,13 +37,14 @@ struct ChatView: View {
 
     private var feed: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(chat.messages) { message in
                     row(message)
                 }
                 status
             }
             .padding(.top, 12)
+            .textSelection(.enabled)
         }
         .scrollIndicators(.hidden)
         .defaultScrollAnchor(.bottom)
@@ -56,13 +56,9 @@ struct ChatView: View {
         case .reviewer(let message):
             ReviewerMessageView(message: message)
         case .post(let post):
-            PostView(post: post, inspected: chat.inspected?.id == post.id,
-                     tag: { chat.compose(tagging: $0) },
-                     reference: { chat.attach(post) },
-                     details: { chat.inspect(chat.inspected?.id == post.id ? nil : post) },
-                     validate: { await chat.validate(post) })
+            PostView(post: post, inspected: chat.inspected?.id == post.id, chat: chat)
         case .working(let working):
-            WorkingPostView(working: working, running: chat.connection == .live, tag: { chat.compose(tagging: $0) })
+            WorkingPostView(working: working, running: chat.connection == .live, chat: chat)
         }
     }
 

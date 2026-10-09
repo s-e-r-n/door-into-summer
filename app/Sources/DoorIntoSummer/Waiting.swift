@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum Shape3D: CaseIterable, Sendable {
@@ -95,32 +96,118 @@ private func turned(_ point: Point3, _ time: Double) -> Point3 {
 private let glyphs = Array("░▒▓█▀▄▌▐│─┤├┴┬╭╮╰╯")
 private let clockRate = 0.012 * 60
 private let alphaLevels = 8
+private let shapeRate: Float = 30
 
-struct AsciiShape: View {
+private struct Sprite {
+    let contents: Any
+    let size: CGSize
+}
+
+@MainActor
+private func sprite(_ text: String, font: NSFont, color: NSColor, scale: CGFloat) -> Sprite {
+    let drawn = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
+    let size = drawn.size()
+    let image = NSImage(size: size, flipped: false) { _ in
+        drawn.draw(at: .zero)
+        return true
+    }
+    return Sprite(contents: image.layerContents(forContentsScale: scale), size: size)
+}
+
+@MainActor
+private func shapeSprites(scale: CGFloat) -> [Sprite] {
+    (0..<alphaLevels * glyphs.count).map { id in
+        sprite(String(glyphs[id % glyphs.count]), font: .shapeGlyph,
+               color: .white.withAlphaComponent(0.2 + CGFloat(id / glyphs.count) / CGFloat(alphaLevels - 1) * 0.8), scale: scale)
+    }
+}
+
+struct AsciiShape: NSViewRepresentable {
     let shape: Shape3D
     let running: Bool
 
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !running)) { context in
-            Canvas { graphics, size in
-                draw(in: &graphics, size: size, time: context.date.timeIntervalSinceReferenceDate * clockRate)
-            }
+    func makeNSView(context: Context) -> AsciiShapeView {
+        AsciiShapeView(shape: shape)
+    }
+
+    func updateNSView(_ view: AsciiShapeView, context: Context) {
+        view.running = running
+    }
+}
+
+final class AsciiShapeView: NSView {
+    private let cloud: [Point3]
+    private let stage = CALayer()
+    private var sprites: [Sprite] = []
+    private var link: CADisplayLink?
+
+    var running = false {
+        didSet {
+            if running != oldValue { linked() }
         }
     }
 
-    private func draw(in graphics: inout GraphicsContext, size: CGSize, time: Double) {
-        let radius = 0.22 * min(size.width, size.height)
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        var resolved: [Int: GraphicsContext.ResolvedText] = [:]
-        for point in points(of: shape).map({ turned($0, time) }).sorted(by: { $0.z < $1.z }) {
-            let depth = max(-1, min(1, point.z))
-            let glyph = glyphs[Int(((depth + 1) / 2) * Double(glyphs.count - 1))]
-            let level = Int(((depth + 1) / 2) * Double(alphaLevels - 1))
-            let key = level * glyphs.count + glyphs.firstIndex(of: glyph)!
-            let text = resolved[key] ?? graphics.resolve(Text(String(glyph)).font(.shapeGlyph).foregroundStyle(.white.opacity(0.2 + Double(level) / Double(alphaLevels - 1) * 0.8)))
-            resolved[key] = text
-            graphics.draw(text, at: CGPoint(x: center.x + point.x * radius, y: center.y + point.y * radius))
+    init(shape: Shape3D) {
+        cloud = points(of: shape)
+        super.init(frame: .zero)
+        wantsLayer = true
+        stage.isGeometryFlipped = true
+        layer?.addSublayer(stage)
+        for _ in cloud {
+            stage.addSublayer(CALayer())
         }
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func layout() {
+        super.layout()
+        stage.frame = bounds
+        placed()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        sprites = shapeSprites(scale: window?.backingScaleFactor ?? 2)
+        placed()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        linked()
+    }
+
+    private func linked() {
+        link?.invalidate()
+        link = nil
+        guard running, window != nil else { return }
+        let link = displayLink(target: self, selector: #selector(stepped))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: shapeRate, maximum: shapeRate, preferred: shapeRate)
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    @objc private func stepped(_ link: CADisplayLink) {
+        placed()
+    }
+
+    private func placed() {
+        guard !sprites.isEmpty else { return }
+        let time = Date.timeIntervalSinceReferenceDate * clockRate
+        let radius = 0.22 * min(bounds.width, bounds.height)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (layer, point) in zip(stage.sublayers ?? [], cloud.map { turned($0, time) }) {
+            let nearness = (max(-1, min(1, point.z)) + 1) / 2
+            let sprite = sprites[Int(nearness * Double(alphaLevels - 1)) * glyphs.count + Int(nearness * Double(glyphs.count - 1))]
+            layer.contents = sprite.contents
+            layer.bounds = CGRect(origin: .zero, size: sprite.size)
+            layer.position = CGPoint(x: bounds.midX + point.x * radius, y: bounds.midY + point.y * radius)
+            layer.zPosition = point.z
+        }
+        CATransaction.commit()
     }
 }
 
@@ -131,9 +218,63 @@ struct Spinner: View {
     let running: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: spinnerInterval, paused: !running)) { context in
-            Text(spinnerFrames[Int(context.date.timeIntervalSinceReferenceDate / spinnerInterval) % spinnerFrames.count])
-                .foregroundStyle(Color.foreground)
+        Text(spinnerFrames[0])
+            .hidden()
+            .overlay { SpinnerGlyph(running: running) }
+            .textSelection(.disabled)
+    }
+}
+
+private struct SpinnerGlyph: NSViewRepresentable {
+    let running: Bool
+
+    func makeNSView(context: Context) -> SpinnerView {
+        SpinnerView()
+    }
+
+    func updateNSView(_ view: SpinnerView, context: Context) {
+        view.running = running
+    }
+}
+
+final class SpinnerView: NSView {
+    private var frames: [Any] = []
+
+    var running = false {
+        didSet {
+            if running != oldValue { animated() }
         }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.contentsGravity = .center
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        let scale = window?.backingScaleFactor ?? 2
+        frames = spinnerFrames.map { sprite($0, font: .mono, color: NSColor(Color.foreground), scale: scale).contents }
+        layer?.contentsScale = scale
+        animated()
+    }
+
+    private func animated() {
+        guard let layer, let first = frames.first else { return }
+        layer.removeAnimation(forKey: "frames")
+        layer.contents = first
+        guard running else { return }
+        let animation = CAKeyframeAnimation(keyPath: "contents")
+        animation.values = frames
+        animation.keyTimes = (0...frames.count).map { NSNumber(value: Double($0) / Double(frames.count)) }
+        animation.calculationMode = .discrete
+        animation.duration = spinnerInterval * Double(frames.count)
+        animation.repeatCount = .infinity
+        layer.add(animation, forKey: "frames")
     }
 }

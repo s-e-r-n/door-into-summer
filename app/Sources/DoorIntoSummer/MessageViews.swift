@@ -7,19 +7,20 @@ struct Stamp: View {
     let at: Date?
 
     var body: some View {
-        Text(at?.formatted(clock) ?? "time unavailable").monospacedDigit().foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+        Text(at?.formatted(clock) ?? "time unavailable").monospacedDigit().foregroundStyle(Color.tertiaryText)
     }
 }
 
 struct SessionName: View {
     let session: String
-    let tag: (String) -> Void
+    let chat: Chat
 
     var body: some View {
-        Button { tag(session) } label: {
+        Button { chat.compose(tagging: session) } label: {
             Text("@\(session)").font(.monoItalic).foregroundStyle(Color.secondaryText)
         }
         .buttonStyle(.plain)
+        .textSelection(.disabled)
     }
 }
 
@@ -29,7 +30,6 @@ struct SettingsLine: View {
     var body: some View {
         Text("└ \(job?.model ?? "model unavailable") · \(job?.aspect ?? "ratio unavailable") · \(job?.quality ?? "quality unavailable") · batch \(job?.batch.map(String.init) ?? "unavailable")")
             .foregroundStyle(Color.tertiaryText)
-            .textSelection(.enabled)
             .padding(.leading, 7)
             .padding(.top, -8)
     }
@@ -57,7 +57,6 @@ struct ReferenceLine: View {
             }
         }
         .foregroundStyle(Color.tertiaryText)
-        .textSelection(.enabled)
     }
 }
 
@@ -96,23 +95,26 @@ struct ReviewerMessageView: View {
                 Stamp(at: message.at)
             }
             HStack(alignment: .firstTextBaseline, spacing: 0) {
-                styled(message.text)
+                Text(styled(message.text))
                 Ticks(mark: message.mark)
             }
             if let reference = message.reference {
                 ReferenceLine(reference: reference, thumbnail: 32)
             }
         }
-        .textSelection(.enabled)
     }
 
-    private func styled(_ text: String) -> Text {
-        runs(in: text).reduce(Text("")) { joined, run in
+    private func styled(_ text: String) -> AttributedString {
+        runs(in: text).reduce(into: AttributedString()) { styled, run in
+            var piece = AttributedString(run.text)
             switch run.kind {
-            case .plain: Text("\(joined)\(run.text)")
-            case .mention: Text("\(joined)\(Text(run.text).font(.monoItalic).foregroundStyle(Color.mention))")
-            case .command: Text("\(joined)\(Text(run.text).foregroundStyle(Color.command))")
+            case .plain: break
+            case .mention:
+                piece.font = .monoItalic
+                piece.foregroundColor = .mention
+            case .command: piece.foregroundColor = .command
             }
+            styled += piece
         }
     }
 }
@@ -120,33 +122,33 @@ struct ReviewerMessageView: View {
 struct PostView: View {
     let post: Post
     let inspected: Bool
-    let tag: (String) -> Void
-    let reference: () -> Void
-    let details: () -> Void
-    let validate: () async -> String?
+    let chat: Chat
     @State private var validating = false
     @State private var refusal: String?
 
     var body: some View {
         Row(highlighted: false, inset: inspected) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                SessionName(session: post.session, tag: tag)
-                Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+                SessionName(session: post.session, chat: chat)
+                Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText)
                 Spacer()
                 Stamp(at: post.at)
             }
             SettingsLine(job: post.job)
-            Text(post.subject).textSelection(.enabled)
+            Text(post.subject)
             figures
             HStack(spacing: 20) {
-                Button("copy prompt") { copyPrompt() }.disabled(post.job?.prompt == nil)
-                Button("use as reference", action: reference).disabled(post.job == nil)
-                Button("details", action: details).foregroundStyle(inspected ? Color.foreground : Color.tertiaryText)
-                Button(post.validated ? "validated" : "validate") { Task { await validated() } }
-                    .disabled(post.validated || validating)
-                    .foregroundStyle(post.validated ? Color.lit : Color.tertiaryText)
+                Group {
+                    Button("copy prompt") { copyPrompt() }.disabled(post.job?.prompt == nil)
+                    Button("use as reference") { chat.attach(post) }.disabled(post.job == nil)
+                    Button("details") { chat.inspect(inspected ? nil : post) }.foregroundStyle(inspected ? Color.foreground : Color.tertiaryText)
+                    Button(post.validated ? "validated" : "validate") { Task { await validated() } }
+                        .disabled(post.validated || validating)
+                        .foregroundStyle(post.validated ? Color.lit : Color.tertiaryText)
+                }
+                .textSelection(.disabled)
                 if let refusal {
-                    Text(refusal).foregroundStyle(Color.alert).textSelection(.enabled)
+                    Text(refusal).foregroundStyle(Color.alert)
                 }
             }
             .buttonStyle(.plain)
@@ -169,7 +171,7 @@ struct PostView: View {
 
     private func validated() async {
         validating = true
-        refusal = await validate()
+        refusal = await chat.validate(post)
         validating = false
     }
 
@@ -183,21 +185,23 @@ struct PostView: View {
 struct WorkingPostView: View {
     let working: WorkingPost
     let running: Bool
-    let tag: (String) -> Void
+    let chat: Chat
     @State private var shape = Shape3D.random()
+    @State private var onScreen = true
 
     var body: some View {
         Row(highlighted: false, inset: false) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                SessionName(session: working.session, tag: tag)
-                Spinner(running: running)
-                Text("image generation \(working.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+                SessionName(session: working.session, chat: chat)
+                Spinner(running: running && onScreen)
+                Text("image generation \(working.attempt)").foregroundStyle(Color.tertiaryText)
                 Spacer()
             }
             SettingsLine(job: working.job)
-            Text(working.subject).textSelection(.enabled)
-            Skeleton(ratio: working.ratio, shape: shape, running: running)
+            Text(working.subject)
+            Skeleton(ratio: working.ratio, shape: shape, running: running && onScreen)
         }
+        .onScrollVisibilityChange { onScreen = $0 }
     }
 }
 
@@ -207,7 +211,7 @@ struct StatusLine: View {
 
     var body: some View {
         Row(highlighted: false, inset: false) {
-            Text(text).foregroundStyle(alert ? Color.alert : Color.tertiaryText).textSelection(.enabled)
+            Text(text).foregroundStyle(alert ? Color.alert : Color.tertiaryText)
         }
     }
 }

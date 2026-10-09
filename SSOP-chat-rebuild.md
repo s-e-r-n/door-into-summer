@@ -50,3 +50,7 @@ Batches:
 | loader symbols | AsciiShape's Canvas | its renderer | the Canvas, once per symbol set |
 
 ## Amendments
+- Waiting draws with Core Animation, not with TimelineView and Canvas symbols: any TimelineView tick re-runs the window's whole graph, 36 to 47 % of a core with every row alive in a plain stack; the loader moves glyph layers from the view's display link, the spinner cycles its glyphs with a `CAKeyframeAnimation`.
+- Loader symbols are owned by AsciiShapeView, one sprite per glyph and alpha level at the window's scale, rebuilt when the backing scale changes.
+- The spinner keeps a hidden `Text` of its first frame for its size and baseline, so the row lays out as before.
+- WorkingPostView owns whether it is on screen, from `onScrollVisibilityChange`, and pauses the loader and the spinner off screen.

@@ -30,7 +30,6 @@ struct Figure: View {
                 Text(caption).foregroundStyle(Color.tertiaryText)
             }
         }
-        .textSelection(.enabled)
     }
 
     @ViewBuilder private var loaded: some View {
@@ -67,7 +66,6 @@ struct Skeleton: View {
             AsciiShape(shape: shape, running: running)
             Text(ratio.label)
                 .foregroundStyle(Color.tertiaryText)
-                .textSelection(.enabled)
                 .padding(.trailing, 12)
                 .padding(.bottom, 10)
         }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 extension Color {
@@ -16,7 +17,11 @@ extension Color {
 extension Font {
     static let mono = Font.custom("JetBrainsMono-Thin", size: 11)
     static let monoItalic = Font.custom("JetBrainsMono-ThinItalic", size: 11)
-    static let shapeGlyph = Font.custom("JetBrainsMono-Thin", size: 7)
+}
+
+extension NSFont {
+    @MainActor static let mono = NSFont(name: "JetBrainsMono-Thin", size: 11) ?? .systemFont(ofSize: 11)
+    @MainActor static let shapeGlyph = NSFont(name: "JetBrainsMono-Thin", size: 7) ?? .systemFont(ofSize: 7)
 }
 
 enum Layout {

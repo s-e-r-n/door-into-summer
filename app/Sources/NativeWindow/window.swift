@@ -13,6 +13,7 @@ public struct window<content_view: View>: Scene {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .containerBackground(Color.black, for: .window)
+        .toolbarVisibility(.hidden, for: .windowToolbar)
         .preferredColorScheme(.dark)
     }
     .windowStyle(.hiddenTitleBar)
