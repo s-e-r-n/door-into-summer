@@ -80,6 +80,14 @@ expect "working: the announced ratio decodes" "$(printf '%s' "$card_a" | sed -n 
 expect "validated: false before any validation" "$(printf '%s' "$card_a" | sed -n 's/.* validated \(.*\)$/\1/p')" "false"
 expect "a card without job or working reads unavailable and none" "$(printf '%s\n' "$cards" | grep '^session b ' | sed -n 's/.* job \(.*\) validated.*/\1/p')" "unavailable working none"
 
+expect "events: the first frame of the stream decodes, ended by the blank line the stream sends" "$("$client" events "$url" 1)" "cards: b attempt 2, a attempt 1"
+( sleep 0.4; shown b 3 '{}' ) &
+changer="$!"
+expect "events: a change pushes a second frame" "$("$client" events "$url" 2 | tail -1)" "cards: b attempt 3, a attempt 1"
+wait "$changer"
+shown b 2 '{}'
+sleep 0.3
+
 sent="$("$client" send "$url" "@a x @b y")"
 expect "send: one message addressing two sessions prints two numbers" "$(printf '%s\n' "$sent" | grep -c ' message 1: ')" "2"
 expect "feedback: each inbox holds its own instruction" "$(cat "$home/state/a.inbox/001.msg")|$(cat "$home/state/b.inbox/001.msg")" "feedback · attempt 1: @a x|feedback · attempt 2: @b y"
