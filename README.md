@@ -91,6 +91,41 @@ A card, on both `/events` and `/cards`:
 - `job` `{"id", "model", "aspect", "quality", "batch", "resolution", "size", "mode", "prompt", "created_at"}`, read by `higgsfield generate get --json -- <id>`: `model` is its `display_name`, `size` is `<width>x<height>`, `created_at` is as Higgsfield gives it, and the others come from its `params`, `aspect_ratio`, `quality`, `batch_size`, `resolution`, `mode`, `prompt`. A field the job does not carry with its type is left out. The server reads each job id once and keeps the answer in memory until it stops, a failed read included: a failed read prints `job <id> unread: <failure>` once, and the card shows no `job`. `job` is absent when images.json names none.
 - `conversation[]` the reviewer's feedbacks, `{"from": "reviewer", "number", "attempt", "text", "state", "sent_at"}`, `sent_at` the mtime of the message file, which the move to `handled/` keeps, and the session's answers, `{"from": "session", "attempt"}`.
 
+### Store
+
+What the reviewer validates is kept outside the repository, in a structure the backend needs whole before it serves:
+
+```
+~/Library/Application Support/Door into Summer/
+  config.json      {"gallery": "~/Pictures/door-into-summer-gallery"}
+  store.jsonl      one line per validated job, append only
+~/Pictures/door-into-summer-gallery/      the gallery, at the path config.json names
+```
+
+`DOOR_INTO_SUMMER_SUPPORT` moves the Application Support directory, for tests. The gallery moves through config.json, whose `gallery` is an absolute path or one starting with `~/`. The gallery is one flat directory, the validated images side by side.
+
+store.jsonl holds one JSON object per line. A line is written whole or not at all, and never edited:
+
+```
+{"job": "<higgsfield job id>", "validated_at": "<ISO 8601>", "session": "<session>", "subject": "<what is generated>",
+ "model": "<model>", "parameters": {"ratio": "<w>:<h>", "quality": "<quality>", "resolution": "<resolution>", "batch": <an integer>},
+ "prompt": "<prompt>", "original": "<url or path>" | null, "file": "<gallery file name>", "fingerprint": "<16 hex digits>"}
+```
+
+`original` is the `url` or `path` of the card's original, null when it has none. `file` is the name of the image in the gallery, and `fingerprint` its 64-bit perceptual hash, in hex.
+
+At startup the backend checks config.json, store.jsonl and the gallery. While one of them is not usable it serves nothing: it prints one line per path on stderr and exits 1.
+
+- `missing: <path>` the path does not exist. While config.json is missing, the gallery checked is its default.
+- `unreadable: <path>` config.json is not a JSON object whose `gallery` is an absolute path or one starting with `~/`.
+- `unwritable: <path>` store.jsonl is not a file the backend can read and append to, or the gallery is not a directory it can write into.
+
+```
+python3 bin/review_window.py --setup
+```
+
+creates each missing piece with its default, in this order: the Application Support directory, config.json as above, an empty store.jsonl, then the gallery config.json names, with each missing parent. It prints `created: <path>` for each creation and changes nothing that exists. It exits 0 once the structure is whole. Otherwise it prints `refused: <path>: <reason>` for a creation the system refused, then what is left in the lines of the startup check, and exits 1. To file the gallery elsewhere, write config.json before running it.
+
 ## Tests
 
 ```

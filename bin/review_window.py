@@ -7,16 +7,17 @@ import sys
 import threading
 from pathlib import Path
 
-from review import sessions
+from review import sessions, store
 from review.board import Board
 from review.changes import watch
 from review.conversation import send_feedback
 
 usage = """Usage:
   review_window.py [<port>] serve the review window on 127.0.0.1:<port>, 8765 by default, 0 for a free one
+  review_window.py --setup  create what is missing of the store structure, then exit
   review_window.py --help   print this usage
 
-The contract an image session writes, the routes and the cards are stated in the README."""
+The contract an image session writes, the routes, the cards and the store structure are stated in the README."""
 page = Path(__file__).resolve().parent / "review-window.html"
 default_port = 8765
 body_limit = 1 << 20
@@ -150,13 +151,35 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
     return Review
 
 
+def print_flaws(flaws: list[store.Flaw]) -> None:
+    for flaw in flaws:
+        print(f"{flaw.kind}: {flaw.path}", file=sys.stderr)
+
+
+def set_up_store() -> int:
+    try:
+        for created in store.set_up():
+            print(f"created: {created}", flush=True)
+    except OSError as error:
+        print(f"refused: {error.filename}: {error.strerror}", file=sys.stderr)
+    flaws = store.flaws()
+    print_flaws(flaws)
+    return 1 if flaws else 0
+
+
 def main(argv: list[str]) -> int:
     if argv[1:] == ["--help"]:
         print(usage)
         return 0
+    if argv[1:] == ["--setup"]:
+        return set_up_store()
     if len(argv) > 2 or (len(argv) == 2 and not argv[1].isdigit()):
         print(usage, file=sys.stderr)
         return 2
+    flaws = store.flaws()
+    if flaws:
+        print_flaws(flaws)
+        return 1
     port = int(argv[1]) if len(argv) == 2 else default_port
     board = Board()
     board.refresh()
