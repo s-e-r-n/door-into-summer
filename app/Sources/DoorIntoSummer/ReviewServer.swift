@@ -159,6 +159,25 @@ enum Filed: Equatable, Sendable {
     case refused(String)
 }
 
+struct Frame {
+    private var event = ""
+    private var data: [String] = []
+
+    mutating func fed(_ line: String, decoder: JSONDecoder) -> [Card]? {
+        if line.isEmpty {
+            defer { self = Frame() }
+            guard event != "page", !data.isEmpty else { return nil }
+            return try? decoder.decode([Card].self, from: Data(data.joined(separator: "\n").utf8))
+        }
+        if line.hasPrefix("event:") {
+            event = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+        } else if line.hasPrefix("data:") {
+            data.append(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
+        }
+        return nil
+    }
+}
+
 struct ReviewServer: Sendable {
     static let defaultAddress = URL(string: "http://127.0.0.1:8765/")!
     static let unanswered = "The review server does not answer."
@@ -204,21 +223,21 @@ struct ReviewServer: Sendable {
     private func streamed(into continuation: AsyncStream<Board>.Continuation) async {
         guard let (bytes, response) = try? await session.bytes(from: address.appending(path: "events")),
               (response as? HTTPURLResponse)?.statusCode == 200 else { return }
-        var event = ""
-        var data: [String] = []
+        var frame = Frame()
+        var line: [UInt8] = []
         do {
-            for try await line in bytes.lines {
-                if line.isEmpty {
-                    if event != "page", !data.isEmpty, let cards = try? decoder.decode([Card].self, from: Data(data.joined(separator: "\n").utf8)) {
-                        continuation.yield(.cards(cards))
-                    }
-                    event = ""
-                    data = []
-                } else if line.hasPrefix("event:") {
-                    event = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
-                } else if line.hasPrefix("data:") {
-                    data.append(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
+            for try await byte in bytes {
+                guard byte == UInt8(ascii: "\n") else {
+                    line.append(byte)
+                    continue
                 }
+                if line.last == UInt8(ascii: "\r") {
+                    line.removeLast()
+                }
+                if let cards = frame.fed(String(decoding: line, as: UTF8.self), decoder: decoder) {
+                    continuation.yield(.cards(cards))
+                }
+                line = []
             }
         } catch {}
     }
