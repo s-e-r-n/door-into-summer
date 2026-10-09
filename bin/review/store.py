@@ -105,18 +105,21 @@ def set_up() -> Iterator[Path]:
         yield from created_directories(gallery)
 
 
-def filed_pair(raw: bytes) -> tuple[str, str] | None:
+def parsed_line(raw: bytes) -> dict | None:
     try:
         line = json.loads(raw)
     except ValueError:
         return None
-    if not isinstance(line, dict) or not isinstance(line.get("job"), str) or not isinstance(line.get("file"), str):
-        return None
-    return line["job"], line["file"]
+    return line if isinstance(line, dict) else None
+
+
+def lines() -> list[dict]:
+    return [line for line in map(parsed_line, store_file.read_bytes().split(b"\n")) if line is not None]
 
 
 def files_by_job() -> dict[str, str]:
-    return dict(pair for pair in map(filed_pair, store_file.read_bytes().split(b"\n")) if pair is not None)
+    return {line["job"]: line["file"] for line in lines()
+            if isinstance(line.get("job"), str) and isinstance(line.get("file"), str)}
 
 
 def job_ids() -> set[str]:

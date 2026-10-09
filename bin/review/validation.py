@@ -22,8 +22,10 @@ tool_seconds = 60
 chunk_bytes = 1 << 20
 hash_side = 32
 hash_band = 8
+match_bits = 10
 needed_fields = ("result_url", "model", "aspect", "quality", "resolution", "batch", "prompt")
 file_extension = re.compile(r"\A\.[A-Za-z0-9]+\Z")
+hex_fingerprint = re.compile(r"\A[0-9A-Fa-f]{16}\Z")
 
 
 class NotShown(Exception):
@@ -41,6 +43,12 @@ class Generation:
     model: str
     parameters: store.Parameters
     prompt: str
+
+
+@dataclass(frozen=True)
+class Match:
+    line: dict
+    distance: int
 
 
 def job_of(session: str, attempt: int, card: Card) -> str:
@@ -128,6 +136,18 @@ def fingerprint(path: Path) -> str:
     band = [coefficients[horizontal][vertical] for vertical in range(hash_band) for horizontal in range(hash_band)]
     middle = median(band)
     return f"{int(''.join('1' if value > middle else '0' for value in band), 2):016x}"
+
+
+def distance(first: str, second: str) -> int:
+    return (int(first, 16) ^ int(second, 16)).bit_count()
+
+
+def match_of(image: Path) -> Match | None:
+    hashed = fingerprint(image)
+    matches = [Match(line, distance(hashed, line["fingerprint"])) for line in store.lines()
+               if isinstance(line.get("fingerprint"), str) and hex_fingerprint.match(line["fingerprint"])]
+    nearest = min(matches, key=lambda match: match.distance, default=None)
+    return nearest if nearest is not None and nearest.distance <= match_bits else None
 
 
 def rename_without_replacing(source: Path, target: Path) -> None:
