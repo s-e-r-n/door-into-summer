@@ -1,5 +1,7 @@
 # door-into-summer
 
+![Door into Summer](app/AppIcon.icon/Assets/illustration.png)
+
 Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session generates and sends that session feedback.
 
 ## Needs
