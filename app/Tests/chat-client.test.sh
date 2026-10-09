@@ -174,15 +174,15 @@ expect "sent_at: each feedback carries its time" "$(printf '%s\n' "$conversation
 expect "reference: the conversation item carries the reference" "$(printf '%s\n' "$conversation" | grep -c " reference $job_id https://example.test/picture.png: @b with image")" "1"
 expect "state: a feedback is delivered until the session moves it" "$(printf '%s\n' "$conversation" | grep -c ' state delivered ')" "3"
 
-shown a 2 "{\"job\": \"$job_2\", \"generation\": {\"label\": \"generation 2\", \"url\": \"https://example.test/2.png\"}}"
+shown a 2 "{\"job\": \"$job_2\", \"generation\": {\"label\": \"generation 2\", \"url\": \"http://127.0.0.1:1/2.png\"}}"
 until_listed '^session a attempt 2 '
 "$client" send "$url" "@a y" > /dev/null
-shown a 3 "{\"job\": \"$job_3\", \"generation\": {\"label\": \"generation 3\", \"url\": \"https://example.test/3.png\"}}"
+shown a 3 "{\"job\": \"$job_3\", \"generation\": {\"label\": \"generation 3\", \"url\": \"http://127.0.0.1:1/3.png\"}}"
 until_listed '^session a attempt 3 '
 history="$("$client" cards "$url" | awk '/^session /{on = ($2 == "a")} on && /^  /')"
 expect "answers: each attempt is its own item, between the feedbacks, in the order sent" "$(printf '%s\n' "$history" | awk '{print $1, ($1 == "session" ? $3 : $4)}' | paste -sd, -)" "session 1,reviewer 1,session 2,reviewer 2,session 3"
 expect "answers: each attempt carries its own job" "$(printf '%s\n' "$history" | awk '$1 == "session" {print $3, $7}' | paste -sd, -)" "1 $job_id,2 $job_2,3 $job_3"
-expect "answers: each attempt carries its own image" "$(printf '%s\n' "$history" | awk '$1 == "session" && $3 > 1 {print $9}' | paste -sd, -)" "https://example.test/2.png,https://example.test/3.png"
+expect "answers: each attempt carries its own image" "$(printf '%s\n' "$history" | awk '$1 == "session" && $3 > 1 {print $9}' | paste -sd, -)" "http://127.0.0.1:1/2.png,http://127.0.0.1:1/3.png"
 image_1="$(printf '%s\n' "$history" | awk '$1 == "session" && $3 == 1 {print $9}')"
 
 expect "validate: attempt 1, behind the card's attempt 3, files the image of its own job" "$(outcome validate "$url" a 1 | sed -n 's/^0 stdout filed: \(.*\)/\1/p' | grep -cE "^[0-9]{4}-[0-9]{2}-[0-9]{2}-a-$job_id\.png$")" "1"

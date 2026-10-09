@@ -1,12 +1,28 @@
 import Foundation
 
+struct PixelSize: Equatable, Hashable, Sendable {
+    let width: Int
+    let height: Int
+
+    init?(width: Int?, height: Int?) {
+        guard let width, let height, width > 0, height > 0 else { return nil }
+        self.width = width
+        self.height = height
+    }
+
+    var ratio: Ratio { Ratio(width: width, height: height) }
+}
+
 struct Picture: Equatable, Hashable, Sendable, Decodable {
     let label: String
     let url: URL
+    let pixels: PixelSize?
 
     private enum CodingKeys: String, CodingKey {
         case label
         case src
+        case width
+        case height
     }
 
     init(from decoder: Decoder) throws {
@@ -18,6 +34,7 @@ struct Picture: Equatable, Hashable, Sendable, Decodable {
             throw DecodingError.dataCorruptedError(forKey: .src, in: container, debugDescription: "No URL in \(src)")
         }
         url = resolved
+        pixels = PixelSize(width: try container.decodeIfPresent(Int.self, forKey: .width), height: try container.decodeIfPresent(Int.self, forKey: .height))
     }
 }
 

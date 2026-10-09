@@ -180,21 +180,21 @@ expect "sent_at stays once the session moves the message to handled/" \
 live cup
 cp "$root/fixture.png" "$root/second.png"
 printf 'second' >> "$root/second.png"
-first="{\"job\": \"$recorded_job\", \"original\": {\"label\": \"the photo\", \"path\": \"$root/fixture.png\"}, \"generation\": {\"label\": \"generation 1\", \"url\": \"https://example.com/cup-1.png\"}}"
+first="{\"job\": \"$recorded_job\", \"original\": {\"label\": \"the photo\", \"path\": \"$root/fixture.png\"}, \"generation\": {\"label\": \"generation 1\", \"url\": \"http://127.0.0.1:1/cup-1.png\"}}"
 shown cup 1 "$first" 202610091000.00
 cards_until '.[] | select(.session == "cup") | .attempt == 1'
 shown cup 1 "$(jq -c '. + {working: {aspect: "3:2"}}' <<< "$first")" 202610091005.00
 cards_until '.[] | select(.session == "cup") | has("working")'
 expect "an answer keeps the time of the images.json that first showed its attempt: the write that adds working moves only the card's at" \
   "$(card cup | jq -r .at) $(answers cup .at)" '2026-10-09T10:05:00Z ["2026-10-09T10:00:00Z"]'
-shown cup 2 "{\"job\": \"$other_job\", \"original\": {\"label\": \"the second photo\", \"path\": \"$root/second.png\"}, \"generation\": {\"label\": \"generation 2\", \"url\": \"https://example.com/cup-2.png\"}}" 202610091010.00
+shown cup 2 "{\"job\": \"$other_job\", \"original\": {\"label\": \"the second photo\", \"path\": \"$root/second.png\"}, \"generation\": {\"label\": \"generation 2\", \"url\": \"http://127.0.0.1:1/cup-2.png\"}}" 202610091010.00
 cards_until '.[] | select(.session == "cup") | .attempt == 2'
 shown cup 3 "{\"generation\": {\"label\": \"generation 3\", \"path\": \"$root/second.png\"}}" 202610091020.00
 cards_until '.[] | select(.session == "cup") | .attempt == 3'
 expect "every attempt the backend saw stays as an answer, with the at, original, generation, job and validated of that attempt" \
   "$(answers cup '[.attempt, .at, .original.label, (.generation.src | sub("v=[0-9]+$"; "v=<version>")), .job.id, .validated]')" \
-  "$(jq -cn --arg first "$recorded_job" --arg second "$other_job" '[[1, "2026-10-09T10:00:00Z", "the photo", "https://example.com/cup-1.png", $first, false],
-    [2, "2026-10-09T10:10:00Z", "the second photo", "https://example.com/cup-2.png", $second, false],
+  "$(jq -cn --arg first "$recorded_job" --arg second "$other_job" '[[1, "2026-10-09T10:00:00Z", "the photo", "http://127.0.0.1:1/cup-1.png", $first, false],
+    [2, "2026-10-09T10:10:00Z", "the second photo", "http://127.0.0.1:1/cup-2.png", $second, false],
     [3, "2026-10-09T10:20:00Z", null, "/image/cup/generation?v=<version>", null, false]]')"
 expect "an answer holds the fields of the card that describe its attempt, job left out when there is none" \
   "$(answers cup keys_unsorted)" \

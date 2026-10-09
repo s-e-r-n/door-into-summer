@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum TickMark: Equatable, Hashable, Sendable {
@@ -18,40 +19,56 @@ struct Ticks: View {
     }
 }
 
+private enum Loaded {
+    case loading
+    case image(NSImage)
+    case unavailable
+}
+
 struct Figure: View {
     let picture: Picture
     let ratio: Ratio?
     let caption: String?
+    @Environment(\.images) private var images
+    @State private var loaded = Loaded.loading
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            loaded
+            box
             if let caption {
                 Text(caption).foregroundStyle(Color.tertiaryText)
             }
         }
         .textSelection(.enabled)
+        .task(id: picture.url) {
+            loaded = await images.image(for: picture.url).map(Loaded.image) ?? .unavailable
+        }
     }
 
-    @ViewBuilder private var loaded: some View {
+    @ViewBuilder private var box: some View {
         if let ratio {
-            AsyncImage(url: picture.url) { phase in
-                switch phase {
-                case .success(let image): image.resizable().scaledToFit()
-                case .failure: Text("image unavailable").foregroundStyle(Color.tertiaryText).padding(12)
-                default: Color.clear
-                }
-            }
-            .aspectRatio(ratio.value, contentMode: .fit)
-            .frame(maxWidth: ratio.figureWidth)
+            Color.clear
+                .aspectRatio(ratio.value, contentMode: .fit)
+                .frame(maxWidth: ratio.figureWidth)
+                .overlay { boxed }
         } else {
-            AsyncImage(url: picture.url) { phase in
-                switch phase {
-                case .success(let image): image.resizable().scaledToFit().frame(maxHeight: Ratio.figureHeight)
-                case .failure: Text("image unavailable").foregroundStyle(Color.tertiaryText)
-                default: Text("loading image").foregroundStyle(Color.tertiaryText)
-                }
-            }
+            free
+        }
+    }
+
+    @ViewBuilder private var boxed: some View {
+        switch loaded {
+        case .image(let image): Image(nsImage: image).resizable().scaledToFit()
+        case .unavailable: Text("image unavailable").foregroundStyle(Color.tertiaryText).padding(12)
+        case .loading: Color.clear
+        }
+    }
+
+    @ViewBuilder private var free: some View {
+        switch loaded {
+        case .image(let image): Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: Ratio.figureHeight)
+        case .unavailable: Text("image unavailable").foregroundStyle(Color.tertiaryText)
+        case .loading: Text("loading image").foregroundStyle(Color.tertiaryText)
         }
     }
 }

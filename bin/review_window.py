@@ -9,6 +9,7 @@ from urllib.parse import parse_qs
 
 from review import sessions, store, validation
 from review.board import Board, events_between
+from review.cards import card_as_served
 from review.changes import Watched, watch
 from review.conversation import Reference, parsed_reference, send_feedback
 
@@ -106,7 +107,7 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
                 return
             route, _, query = self.path.partition("?")
             if route == "/cards":
-                self.answer(200, "application/json", json.dumps([*board.latest()[1].values()]).encode())
+                self.answer(200, "application/json", json.dumps([card_as_served(card) for card in board.latest()[1].values()]).encode())
             elif route == "/events":
                 self.streamed_events()
             elif route.startswith("/image/") and route.count("/") == 3:

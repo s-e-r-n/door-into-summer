@@ -38,18 +38,23 @@ struct SettingsLine: View {
 struct ReferenceLine: View {
     let reference: ShownReference
     let thumbnail: CGFloat
+    @Environment(\.images) private var images
+    @State private var image: NSImage?
 
     var body: some View {
         HStack(spacing: 8) {
-            AsyncImage(url: reference.url) { phase in
-                if case .success(let image) = phase {
-                    image.resizable().scaledToFill()
+            Group {
+                if let image {
+                    Image(nsImage: image).resizable().scaledToFill()
                 } else {
                     Color.reviewerRow
                 }
             }
             .frame(width: thumbnail, height: thumbnail)
             .clipped()
+            .task(id: reference.url) {
+                image = await images.image(for: reference.url)
+            }
             if let session = reference.session, let attempt = reference.attempt {
                 Text("\(Text("@\(session)").font(.monoItalic)) · image generation \(attempt)").lineLimit(1)
             } else {
@@ -153,10 +158,10 @@ struct PostView: View {
     private var figures: some View {
         HStack(alignment: .top, spacing: 10) {
             if let original = post.original {
-                Figure(picture: original, ratio: nil, caption: original.label)
+                Figure(picture: original, ratio: original.pixels?.ratio, caption: original.label)
             }
             if let generation = post.generation {
-                Figure(picture: generation, ratio: post.job?.ratio, caption: post.original == nil ? nil : generation.label)
+                Figure(picture: generation, ratio: generation.pixels?.ratio ?? post.job?.ratio, caption: post.original == nil ? nil : generation.label)
             } else {
                 Text("image unavailable").foregroundStyle(Color.tertiaryText)
             }
