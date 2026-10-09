@@ -7,20 +7,30 @@ Door into Summer: a native macOS chat where the reviewer sees each visual an age
 app/scripts/make_app.sh
 ```
 
-builds `app/.build/Door into Summer.app`, a SwiftUI chat on macOS 26 that is the client of the review server below: it reads `/events` and `/cards`, shows the images it serves, and sends through `/feedback`. One thread holds every live session, oldest first: each session's posts, `image generation <n>`, then the feedbacks given on them, each with a time and two ticks. Clicking a session's name puts its `@tag` in the chat bar. `details` slides the metadata panel in on the right, `Cmd+B` opens and closes it on the last post opened, `validate` posts `{"session", "attempt"}` to `/validate`, the route that files the validated image at full quality with its job id. The window has no title bar, no traffic lights and no title, opens at two thirds of the screen width, and is dragged by its background.
+builds `app/.build/Door into Summer.app`, a SwiftUI chat on macOS 26 that is the client of the review server below: it reads `/events` and `/cards`, shows the images it serves, and sends through `/feedback` and `/validate`. One thread holds every live session, ordered by time across sessions: each session's post, `image generation <n>`, at the time of its images.json, and the reviewer's feedbacks at the time they were sent, each with two ticks. Clicking a session's name puts its `@tag` in the chat bar. `details` slides the metadata panel in on the right, 400 px over 220 ms on the curve (0.25, 0.1, 0.25, 1), the thread narrowing on the same curve, and `Cmd+B` opens and closes it on the last post opened. `validate` posts `{"session", "attempt"}` to `/validate` and shows the server's refusal beside it; a validated post reads `validated`. `use as reference` puts the post's image in the chat bar as a chip, with a thumbnail, `@session image generation <n>` and `×`: the next message carries the reference, the job id and the image URL, to every session it addresses, and a message that carried one shows it under its text. The window has no title bar, no traffic lights and no title, opens at two thirds of the screen width, and is dragged by its background. The type is JetBrains Mono Thin and Thin Italic, bundled in the app under `Sources/DoorIntoSummer/Fonts` with their OFL license.
 
-The chat bar sends one message to several sessions: `@a instruction /option @b instruction`. An `@session` opens an instruction, the next `@` or the end of the message closes it, and a `/command` belongs to the instruction it sits in. Each session receives its own part, tag included, as the feedback line `feedback · attempt <n>: @<session> <instruction>`, where `<n>` is the attempt the chat showed for that session. A message that does not open with `@session`, or names a session that is not live, is refused under the bar and stays in it.
+The chat bar sends one message to several sessions: `@a instruction /option @b instruction`. An `@session` opens an instruction, the next `@` or the end of the message closes it, and a `/command` belongs to the instruction it sits in. Each session receives its own part, tag included, as the feedback line `feedback · attempt <n>: @<session> <instruction>`, where `<n>` is the attempt the chat showed for that session, and the reference line second when the bar held one. A message that does not open with `@session`, or names a session that is not live, is refused under the bar and stays in it.
 
 Typing `@` lists the live sessions, `/` lists the image retouching skills: a skill in `~/.hypnos/skills` whose `SKILL.md` frontmatter holds `door-into-summer: command`, shown by its `name` and `description`. While none qualifies, the menu says so. Arrow keys move the selection, `Enter` or `Tab` complete, `Esc` closes.
 
-What the server does not serve yet reads as such: a post's metadata line and panel read `<field> unavailable`, a message with no time reads `time unavailable`, and `validate` shows the server's refusal beside it. The thread shows what the live sessions hold, one post per session, with the feedbacks given on earlier attempts before it. A session that announces a generation in progress shows a spinner and an ASCII shape at the announced ratio, which stop while the server does not answer. Images are drawn 810 px tall from the full image the server serves, scaled only by the drawing.
+A field the job does not carry reads `<field> unavailable`, in the line under a post's header and in the panel. A session whose card carries `working` shows a spinner beside its name and an invisible skeleton at the announced ratio, with an ASCII shape drawn at random among a cube, a double helix and a tetrahedron; both stop while the server does not answer. Images are drawn 810 px tall from the full image the server serves, scaled only by the drawing, and one wider than the thread scales down to the thread width.
 
 ```
-app/.build/debug/DoorIntoSummer send http://127.0.0.1:8765/ "@a instruction /option @b instruction"
+app/.build/debug/DoorIntoSummer send <server url> "@a instruction /option @b instruction" [<job> <image url>]
+app/.build/debug/DoorIntoSummer cards <server url>
+app/.build/debug/DoorIntoSummer validate <server url> <session> <attempt>
 ```
 
-sends one message through the same code as the chat bar and prints each session's message number.
+run the chat's own code from the command line: `send` sends one message, with an image reference when a job and a URL follow, and prints each session's message number; `cards` prints the cards as the chat decodes them; `validate` files one attempt and prints its file name.
 
+### App tests
+
+```
+swift test --package-path app
+app/Tests/chat-client.test.sh
+```
+
+`swift test` covers the multi-session message parser alone. `chat-client.test.sh` proves each line of the backend contract the chat reads, through the command line above, against a sandbox under `$TMPDIR`: a scratch `HYPNOS_HOME`, `HOME` and `DOOR_INTO_SUMMER_SUPPORT` set up with `--setup`, a fake `higgsfield` and a fake `herdr` first on `PATH`, and a copy of `~/.hypnos/bin/hy-session.sh`. It runs offline after `swift build --package-path app` and needs `jq`, exiftool and ImageMagick.
 
 ## Review server
 
