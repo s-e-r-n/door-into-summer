@@ -53,10 +53,8 @@ struct ChatBar: View {
             focused = true
             chat.tagging = nil
         }
-        .onAppear {
-            focused = true
-            chat.refreshCommands()
-        }
+        .onAppear { focused = true }
+        .task { await chat.refreshCommands() }
     }
 
     private var field: some View {
@@ -84,7 +82,11 @@ struct ChatBar: View {
             .onKeyPress(.tab) { pickChosen() }
             .onKeyPress(.return) { pickChosen() }
             .onKeyPress(.escape) { dismiss() }
-            .onChange(of: currentToken) { if currentToken != nil { chat.refreshCommands() } }
+            .task(id: currentToken) {
+                if currentToken != nil {
+                    await chat.refreshCommands()
+                }
+            }
     }
 
     private func move(_ step: Int) -> KeyPress.Result {

@@ -11,7 +11,8 @@ enum Commands {
 
     static let defaultRoot = URL(fileURLWithPath: NSHomeDirectory()).appending(path: ".hypnos/skills")
 
-    static func commands(in root: URL) -> [Command] {
+    @concurrent
+    static func commands(in root: URL) async -> [Command] {
         let directories = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
         return directories
             .compactMap { directory in command(in: directory.appending(path: "SKILL.md")) }
