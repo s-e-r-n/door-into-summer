@@ -7,6 +7,7 @@ Usage:
   DoorIntoSummer send <server url> <message> [<job> <url>]   send one message, one instruction per @session, with an image reference when a job and a url follow, and print each message number
   DoorIntoSummer cards <server url>                          print the cards the server serves, as the chat decodes them
   DoorIntoSummer validate <server url> <session> <attempt>   file the image of that attempt through the server and print its file name
+  DoorIntoSummer events <server url> [<frames>]              follow the server's event stream as the chat does and print each frame, one by default
 """
 
 private let iso = Date.ISO8601FormatStyle()
@@ -74,6 +75,25 @@ func validated(_ arguments: [String]) async -> Int32 {
     return 0
 }
 
+@MainActor
+func followed(_ arguments: [String]) async -> Int32 {
+    guard arguments.count == 1 || arguments.count == 2, let url = URL(string: arguments[0]) else {
+        print(usage)
+        return 2
+    }
+    let wanted = arguments.count == 2 ? Int(arguments[1]) ?? 1 : 1
+    var seen = 0
+    for await board in ReviewServer(address: url).boards() {
+        switch board {
+        case .cards(let cards): print("cards: \(cards.map { "\($0.session) attempt \($0.attempt)" }.joined(separator: ", "))")
+        case .lost: print("lost")
+        }
+        seen += 1
+        if seen >= wanted { return 0 }
+    }
+    return 1
+}
+
 func registeredFonts() {
     guard let fonts = Bundle.module.urls(forResourcesWithExtension: "ttf", subdirectory: "Fonts") else { return }
     CTFontManagerRegisterFontURLs(fonts as CFArray, .process, true, nil)
@@ -87,6 +107,8 @@ case "cards":
     exit(await listed(Array(arguments.dropFirst())))
 case "validate":
     exit(await validated(Array(arguments.dropFirst())))
+case "events":
+    exit(await followed(Array(arguments.dropFirst())))
 case "--help":
     print(usage)
     exit(0)
