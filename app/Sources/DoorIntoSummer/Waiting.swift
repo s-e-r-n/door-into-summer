@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let loaderFrames = ["·", "··", "···"]
+private let loaderFrames = ["·  ", "·· ", "···"]
 private let loaderInterval = 0.4
 
 struct TextLoader: View {
@@ -8,10 +8,13 @@ struct TextLoader: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: loaderInterval, paused: !running)) { context in
-            Text(loaderFrames[Int(context.date.timeIntervalSinceReferenceDate / loaderInterval) % loaderFrames.count])
+            Text(loaderFrames.joined())
+                .fixedSize()
+                .offset(x: -CGFloat(Int(context.date.timeIntervalSinceReferenceDate / loaderInterval) % loaderFrames.count) * Mono.characterWidth * 3)
         }
         .foregroundStyle(Color.foreground)
         .frame(width: Mono.characterWidth * 3, height: Mono.lineHeight, alignment: .leading)
+        .clipped()
     }
 }
 
