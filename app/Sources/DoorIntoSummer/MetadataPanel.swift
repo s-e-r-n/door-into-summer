@@ -37,7 +37,7 @@ struct MetadataPanel: View {
                     Text("@\(post.session)").font(.monoItalic).textSelection(.enabled)
                     Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
                     Spacer()
-                    Button("×") { chat.inspect(nil) }.buttonStyle(.plain).foregroundStyle(Color.tertiaryText)
+                    Button("×") { chat.inspect(nil) }.buttonStyle(.pointing).foregroundStyle(Color.tertiaryText)
                 }
                 Grid(alignment: .topLeading, horizontalSpacing: 7, verticalSpacing: 6) {
                     ForEach(fields(of: post)) { field in

@@ -17,7 +17,7 @@ struct SessionName: View {
         Button { tag(session) } label: {
             Text("@\(session)").font(.monoItalic).foregroundStyle(Color.secondaryText)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pointing)
     }
 }
 
@@ -138,7 +138,7 @@ struct PostView: View {
                     Text(refusal).foregroundStyle(Color.alert).textSelection(.enabled)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pointing)
             .foregroundStyle(Color.tertiaryText)
         }
     }

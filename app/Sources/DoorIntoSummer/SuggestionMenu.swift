@@ -20,6 +20,7 @@ struct SuggestionMenu: View {
                             .contentShape(Rectangle())
                             .onHover { inside in if inside { hovered(index) } }
                             .onTapGesture { picked(index) }
+                            .pointerStyle(.link)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
