@@ -4,7 +4,7 @@
 | 2026-10-09 | Using an image as a reference does not address the session that generated it: the reviewer has to type `@<session>` as well. Using an image as a reference should address that session on its own. | Use | - | medium |
 | 2026-10-09 | The chat labels the reviewer's messages with the word `reviewer`. It should show the reviewer's name, taken from the configuration of the machine. | Card | - | low |
 | 2026-10-09 | The whole window can be dragged from anywhere in it, unlike a native macOS window, which moves only by its title bar. | - | - | medium |
-| 2026-10-09 | Validating an earlier image of a session files the session's latest image instead. The reviewer validated generations 1 and 2 of a session, and the gallery and the store received generations 2 and 3. The backend knows only the latest attempt of a session, so it files that one. Solution track: the one of the row on images replaced, which gives the backend the job of every attempt. | Use | - | critical |
+| 2026-10-09 | Validating an earlier image of a session does not file it. The reviewer validated generation 1 of a session, and the store holds no line for it. The backend knows only the latest attempt of a session. Solution track: the one of the row on images replaced, which gives the backend the job of every attempt. | Use | - | critical |
 | 2026-10-09 | Shift+Enter does nothing in the chat bar. It should start a new line. | Use | - | low |
 | 2026-10-09 | Sending a message with Enter shows it several times in the chat before it settles on a single entry labelled `reviewer`. | Use | - | medium |
 | 2026-10-09 | Cmd+B does nothing until `details` has been clicked once on a post. | Card | - | low |
