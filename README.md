@@ -36,7 +36,7 @@ It reads the sessions of hypnos under `${HYPNOS_HOME:-~/.hypnos}` and writes not
 ~/.hypnos/bin/hy-session.sh send <session> "feedback · attempt <n>: <text>"
 ```
 
-where `<n>` is the attempt the card showed when the feedback was written.
+where `<n>` is the attempt the card showed when the feedback was written. A feedback that carries an image reference adds it as a second line, stated under Feedback message.
 
 ### Cards
 
@@ -70,6 +70,17 @@ The contract an image session writes at `${HYPNOS_HOME}/data/<name>/images.json`
 
 `original` is left out, or null, when the generation starts from no photo. `url` is what the page puts in `img src`, such as the `result_url` of a generation; `path` is a local image file the server serves. `job` names the Higgsfield job of the generation shown, and is left out when there is none. `working` is written the moment the session starts the next generation, with the ratio it asked for, and the next attempt's images.json, written without it, ends it. A file of any other shape leaves the card as it was, except a `job` that is not a one-line string and a `working` whose aspect is not two positive integers of at most 4 digits: each is dropped, and the rest of the card shows.
 
+### Feedback message
+
+The contract an image session reads in its inbox, `state/<name>.inbox/<NNN>.msg`, one file per feedback:
+
+```
+feedback · attempt <n>: <text>
+reference: <job id> <image url>
+```
+
+The first line is the feedback. The second line is there only when the feedback carries an image reference: `<job id>` names the Higgsfield job of that image and `<image url>` is its http or https URL, each one word of printable ASCII. A feedback carrying a reference holds its text on one line, so the reference is always the second line. Without a reference, the file is the first line alone.
+
 ### Routes
 
 Answered on 127.0.0.1 only, to a Host of `127.0.0.1:<port>` or `localhost:<port>`, and to no other Origin.
@@ -78,7 +89,7 @@ Answered on 127.0.0.1 only, to a Host of `127.0.0.1:<port>` or `localhost:<port>
 - `GET /events` the cards at once, then at each change, as server-sent events
 - `GET /cards` the same cards, once, as JSON
 - `GET /image/<name>/<slot>` the file of an image given by path, slot `original` or `generation`
-- `POST /feedback` `{"session", "attempt", "text"}` as JSON, at most 1 MiB: 200 `{"number"}` once the message is in the inbox, the doorbell rung or not, 422 with the refusal of `hy-session.sh send`, 400 for another body
+- `POST /feedback` `{"session", "attempt", "text", "reference"}` as JSON, at most 1 MiB, `reference` `{"job", "url"}` left out or null for a feedback with no image reference: 200 `{"number"}` once the message is in the inbox, the doorbell rung or not, 422 with the refusal of `hy-session.sh send`, 400 with its reason for another body, an invalid reference included: a job or a url that is not one word of printable ASCII, a url that is not an http or https URL with a host, or a text of more than one line beside the reference
 - `POST /validate` `{"session", "attempt"}` as JSON, at most 1 MiB: files the image of that attempt, as told under Validation. 200 `{"file"}` once it is in the gallery and its line in the store, 404 when the card of `session` does not show `attempt`, names no job, or names one no file name can hold, with a `/` or a NUL, 409 `{"error", "file"}` when the job is already in the store, 502 naming a Higgsfield failure, 500 naming the path that refused the write, 400 for another body
 
 A card, on both `/events` and `/cards`:
@@ -91,7 +102,7 @@ A card, on both `/events` and `/cards`:
 - `working` `{"aspect": "<w>:<h>"}`, passed through from images.json, absent otherwise.
 - `job` `{"id", "model", "aspect", "quality", "batch", "resolution", "size", "mode", "prompt", "created_at"}`, read by `higgsfield generate get --json -- <id>`: `model` is its `display_name`, `size` is `<width>x<height>`, `created_at` is as Higgsfield gives it, and the others come from its `params`, `aspect_ratio`, `quality`, `batch_size`, `resolution`, `mode`, `prompt`. A field the job does not carry with its type is left out. The server reads each job id once and keeps the answer in memory until it stops, a failed read included: a failed read prints `job <id> unread: <failure>` once, and the card shows no `job`. `job` is absent when images.json names none.
 - `validated` true when the job of the attempt shown is in the store, false otherwise. It follows store.jsonl, so the push that follows a new line carries it.
-- `conversation[]` the reviewer's feedbacks, `{"from": "reviewer", "number", "attempt", "text", "state", "sent_at"}`, `sent_at` the mtime of the message file, which the move to `handled/` keeps, and the session's answers, `{"from": "session", "attempt"}`.
+- `conversation[]` the reviewer's feedbacks, `{"from": "reviewer", "number", "attempt", "text", "state", "sent_at", "reference"}`, `sent_at` the mtime of the message file, which the move to `handled/` keeps, `reference` `{"job", "url"}` read from the second line of the message file and absent when it has none, and the session's answers, `{"from": "session", "attempt"}`.
 
 ### Store
 
@@ -156,3 +167,9 @@ tests/validate.test.sh
 ```
 
 `POST /validate` in a sandbox under `$TMPDIR`: its own `HYPNOS_HOME`, Application Support directory and gallery, and a fake `higgsfield` first on `PATH` that answers recorded jobs whose `result_url` is a local file. It runs offline and needs `jq`, `curl`, exiftool and ImageMagick.
+
+```
+tests/reference.test.sh
+```
+
+The image reference of a feedback, through `POST /feedback`, the inbox files, `/cards` and `/events`. Offline, in a sandbox under `$TMPDIR`: a scratch `HYPNOS_HOME`, `HOME` and `DOOR_INTO_SUMMER_SUPPORT`, a fake `higgsfield` and a fake `herdr` first on `PATH`, and a copy of `~/.hypnos/bin/hy-session.sh` that the server runs from the scratch `HOME`. It needs `jq`, `curl` and `~/.hypnos/bin/hy-session.sh`.
