@@ -92,6 +92,34 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 | `POST /validate` | 400 `{"error"}` | another body |
 | `POST /validate` | any refusal | leaves no file in the gallery |
 
+### Command line
+
+```
+app/.build/debug/DoorIntoSummer                           opens the chat on the review server at 127.0.0.1:8765
+app/.build/debug/DoorIntoSummer --help                    prints the usage
+app/.build/debug/DoorIntoSummer <command> <arguments>     prints one line saying what happened, then exits 0, 1 or 2
+```
+
+| Case | Line | Stream | Exit |
+| --- | --- | --- | --- |
+| unknown command | `unknown command: <command>`, then the usage | stderr | 2 |
+| wrong number of arguments | `<command> expects <its arguments as the usage writes them>, got <n> arguments`, then the usage | stderr | 2 |
+| server URL that is not an http or https URL with a host | `not a server url: <text>` | stderr | 2 |
+| last argument of `send` that is neither an attempt number nor an http or https URL with a host | `not an image url: <text>` | stderr | 2 |
+| attempt of `validate` that is not a number | `not an attempt number: <text>` | stderr | 2 |
+| frame count of `events` that is not a number above 0 | `not a frame count: <text>` | stderr | 2 |
+| server that does not answer: to `GET /cards`, to a `POST`, or on `/events` before its first frame | `the review server does not answer at <url>` | stderr | 1 |
+| server that answers `GET /cards` with no cards the app can decode | `the review server at <url> answers no cards the chat can read` | stderr | 1 |
+| refusal of the server, or of the chat: a message that does not open with `@session`, or names a session that is not live | `refused: <reason>`, each reason of `send` from the server led by `@<session>: `; the lines of the messages already sent stay on stdout | stderr | 1 |
+| attempt that no post of the session shows | `no image generation <n> of @<session> on the server` | stderr | 1 |
+| attempt of `send` whose post carries no job | `no job for image generation <n> of @<session> on the server` | stderr | 1 |
+| event stream that ends before the frames asked | `the event stream ended after <seen> of <wanted> frames` | stderr | 1 |
+| success of `send` | one `@<session> attempt <n> message <number>: <text>` line per session, ` reference <job> <url>` after it with a reference, then `sent: <n> messages` | stdout | 0 |
+| success of `cards` | each card and its conversation, as [Card](#card) prints them, then `listed: <n> sessions` | stdout | 0 |
+| success of `validate` | `filed: <file name>` | stdout | 0 |
+| success of `events` | one `cards: <session> attempt <n>, ...` line per frame, then `followed: <n> frames` | stdout | 0 |
+| `--help` | the usage | stdout | 0 |
+
 ### Card
 
 ```
@@ -243,7 +271,7 @@ reference: <job id> <image url>
 | `app/.build/debug/DoorIntoSummer` | the app's command line, built by `swift build --package-path app` |
 | `app/Sources/DoorIntoSummer/Fonts` | JetBrains Mono Thin and Thin Italic, with their OFL license |
 | `app/Tests/` | `swift test --package-path app`: the message parser |
-| `app/Tests/chat-client.test.sh` | each line of the backend contract the app reads, through its command line |
+| `app/Tests/chat-client.test.sh` | each line of the backend contract the app reads, through its command line, and each exit of [Command line](#command-line) |
 | `tests/review-window.test.sh` | the serving, through curl: the push on `/events`, `POST /feedback` into the inboxes, the Host and Origin checks, a restart, no write beyond the inboxes |
 | `tests/validate.test.sh` | `POST /validate` |
 | `tests/match.test.sh` | `--match` |
