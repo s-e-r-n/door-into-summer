@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ChatView: View {
-    @Bindable var chat: Chat
+    let chat: Chat
 
     private var open: Bool { chat.inspected != nil }
 
@@ -20,13 +20,14 @@ struct ChatView: View {
         .font(.mono)
         .foregroundStyle(Color.foreground)
         .background(Color.desk)
+        .environment(chat)
         .task { await chat.start() }
     }
 
     @ViewBuilder private var panel: some View {
         Group {
             if let post = chat.lastInspected {
-                MetadataPanel(post: post) { chat.inspect(nil) }
+                MetadataPanel(post: post)
             } else {
                 Color.desk
             }
@@ -39,8 +40,8 @@ struct ChatView: View {
     private var feed: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(chat.messages) { message in
-                    row(message)
+                ForEach(chat.thread.ids, id: \.self) { id in
+                    row(id)
                 }
                 status
             }
@@ -51,18 +52,16 @@ struct ChatView: View {
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
     }
 
-    @ViewBuilder private func row(_ message: Message) -> some View {
-        switch message {
+    @ViewBuilder private func row(_ id: String) -> some View {
+        switch chat.thread.models[id] {
         case .reviewer(let message):
             ReviewerMessageView(message: message)
         case .post(let post):
-            PostView(post: post, inspected: chat.inspected?.id == post.id,
-                     tag: { chat.compose(tagging: $0) },
-                     reference: { chat.attach(post) },
-                     details: { chat.inspect(chat.inspected?.id == post.id ? nil : post) },
-                     validate: { await chat.validate(post) })
+            PostView(post: post)
         case .working(let working):
-            WorkingPostView(working: working, running: chat.connection == .live, tag: { chat.compose(tagging: $0) })
+            WorkingPostView(working: working)
+        case nil:
+            EmptyView()
         }
     }
 
@@ -72,7 +71,7 @@ struct ChatView: View {
             StatusLine(text: "Connecting to the review server at \(chat.serverAddress).", alert: false)
         case .lost:
             StatusLine(text: "The server stopped answering. The chat reconnects on its own.", alert: true)
-        case .live where chat.cards.isEmpty:
+        case .live where chat.thread.sessions.isEmpty:
             StatusLine(text: "No live image session.", alert: false)
         case .live:
             EmptyView()

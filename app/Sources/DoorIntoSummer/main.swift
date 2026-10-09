@@ -107,13 +107,13 @@ func sent(_ arguments: [String]) async -> Outcome {
         chat.attach(Reference(job: arguments[2], url: image))
     }
     let refusal = await chat.send(arguments[1])
-    for placed in chat.pending {
+    for placed in chat.thread.pending {
         print("@\(placed.session) attempt \(placed.attempt) message \(placed.number.map(String.init) ?? "refused"): \(placed.text)\(placed.reference.map { " reference \($0.job) \($0.url.absoluteString)" } ?? "")")
     }
     if let refusal {
         return refused(refusal, at: url)
     }
-    return .succeeded("sent: \(chat.pending.count) messages")
+    return .succeeded("sent: \(chat.thread.pending.count) messages")
 }
 
 @MainActor
@@ -123,13 +123,13 @@ func listed(_ arguments: [String]) async -> Outcome {
     }
     guard let url = httpURL(arguments[0]) else { return .malformed("not a server url: \(arguments[0])") }
     guard let chat = await loaded(url) else { return await loadFailure(at: url) }
-    for card in chat.cards {
+    for card in chat.thread.cards {
         print("session \(card.session) attempt \(card.attempt) at \(card.at.formatted(iso)) job \(card.job?.model ?? "unavailable") working \(card.working?.ratio.label ?? "none") validated \(card.validated)")
         for spoken in card.conversation {
             print(line(of: spoken))
         }
     }
-    return .succeeded("listed: \(chat.cards.count) sessions")
+    return .succeeded("listed: \(chat.thread.cards.count) sessions")
 }
 
 private func line(of spoken: Spoken) -> String {
@@ -142,8 +142,8 @@ private func line(of spoken: Spoken) -> String {
 }
 
 @MainActor
-private func post(of session: String, attempt: Int, in chat: Chat) -> Post? {
-    chat.messages.lazy.compactMap { if case .post(let shown) = $0 { shown } else { nil } }.first { $0.session == session && $0.attempt == attempt }
+private func post(of session: String, attempt: Int, in chat: Chat) -> PostModel? {
+    chat.thread.post(session: session, attempt: attempt)
 }
 
 @MainActor
