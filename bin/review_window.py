@@ -7,7 +7,7 @@ import sys
 import threading
 from pathlib import Path
 
-from review import sessions, store
+from review import sessions, store, validation
 from review.board import Board
 from review.changes import watch
 from review.conversation import send_feedback
@@ -61,6 +61,47 @@ def sent(body: bytes) -> tuple[int, dict]:
     return 200, {"number": outcome}
 
 
+def parsed_validation(body: bytes) -> tuple[str, int] | str:
+    try:
+        request = json.loads(body)
+    except ValueError:
+        return "The body is not JSON."
+    if not isinstance(request, dict):
+        return "The body holds session and attempt."
+    session, attempt = request.get("session"), request.get("attempt")
+    if not isinstance(session, str):
+        return "The session is a string."
+    if type(attempt) is not int or attempt < 0:
+        return "The attempt is the integer the card showed."
+    return session, attempt
+
+
+def refused_path(error: OSError) -> str:
+    reason = error.strerror or str(error)
+    return reason if error.filename is None else f"{error.filename}: {reason}"
+
+
+def validated(body: bytes, board: Board) -> tuple[int, dict]:
+    request = parsed_validation(body)
+    if isinstance(request, str):
+        return 400, {"error": request}
+    session, attempt = request
+    try:
+        return 200, {"file": validation.validate(session, attempt, board.card(session))}
+    except validation.NotShown as unshown:
+        return 404, {"error": str(unshown)}
+    except store.AlreadyFiled as filed:
+        return 409, {"error": str(filed), "file": filed.file}
+    except validation.HiggsfieldFailed as failure:
+        return 502, {"error": str(failure)}
+    except OSError as error:
+        return 500, {"error": refused_path(error)}
+
+
+def watched_paths() -> list[Path]:
+    return [*sessions.watched_paths(), store.store_file]
+
+
 def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
     class Review(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -81,7 +122,8 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
         def do_POST(self):
             if not self.trusted():
                 return
-            if self.path != "/feedback":
+            routes = {"/feedback": sent, "/validate": lambda body: validated(body, board)}
+            if self.path not in routes:
                 self.not_found()
                 return
             if self.headers.get_content_type() != "application/json":
@@ -91,7 +133,7 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
             if not 0 < length <= body_limit:
                 self.answer(413, "application/json", b'{"error": "The body holds 1 byte to 1 MiB."}')
                 return
-            status, payload = sent(self.rfile.read(length))
+            status, payload = routes[self.path](self.rfile.read(length))
             self.answer(status, "application/json", json.dumps(payload).encode())
 
         def streamed_events(self):
@@ -188,7 +230,7 @@ def main(argv: list[str]) -> int:
     except OSError as error:
         print(f"Port {port} refused: {error.strerror}.", file=sys.stderr)
         return 1
-    threading.Thread(target=watch, args=(sessions.watched_paths, board.refresh), daemon=True).start()
+    threading.Thread(target=watch, args=(watched_paths, board.refresh), daemon=True).start()
     print(f"serving: http://127.0.0.1:{server.server_address[1]}/", flush=True)
     try:
         server.serve_forever()

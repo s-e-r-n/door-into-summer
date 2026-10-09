@@ -106,6 +106,12 @@ def shown_card(name: str, card: Card) -> dict:
     return shown if card.working is None else shown | {"working": {"aspect": card.working.aspect}}
 
 
+def image_location(image: Image | None) -> str | None:
+    if image is None:
+        return None
+    return image.source.url if isinstance(image.source, Linked) else image.source.path
+
+
 def local_path(card: Card, slot: str) -> str | None:
     image = {"original": card.original, "generation": card.generation}.get(slot)
     return image.source.path if image is not None and isinstance(image.source, Local) else None
