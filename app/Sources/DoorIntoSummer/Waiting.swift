@@ -15,7 +15,7 @@ struct TextLoader: View {
     }
 }
 
-private let spinnerFrames = ["|", "/", "-", "\\"]
+private let spinnerFrames = "|/-\\"
 private let spinnerInterval = 0.12
 
 struct Spinner: View {
@@ -23,9 +23,12 @@ struct Spinner: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: spinnerInterval, paused: !running)) { context in
-            Text(spinnerFrames[Int(context.date.timeIntervalSinceReferenceDate / spinnerInterval) % spinnerFrames.count])
+            Text(spinnerFrames)
+                .fixedSize()
+                .offset(x: -CGFloat(Int(context.date.timeIntervalSinceReferenceDate / spinnerInterval) % spinnerFrames.count) * Mono.characterWidth)
         }
         .foregroundStyle(Color.foreground)
-        .frame(width: Mono.characterWidth, height: Mono.lineHeight)
+        .frame(width: Mono.characterWidth, height: Mono.lineHeight, alignment: .leading)
+        .clipped()
     }
 }
