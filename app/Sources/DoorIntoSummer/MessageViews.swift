@@ -179,7 +179,6 @@ struct PostView: View {
 struct WorkingPostView: View {
     let working: WorkingModel
     @Environment(Chat.self) private var chat
-    @State private var shape = Shape3D.random()
 
     private var running: Bool { chat.connection == .live }
 
@@ -193,7 +192,7 @@ struct WorkingPostView: View {
             }
             SettingsLine(job: working.job)
             Text(working.subject).textSelection(.enabled)
-            Skeleton(ratio: working.ratio, shape: shape, running: running)
+            Skeleton(ratio: working.ratio, running: running)
         }
     }
 }

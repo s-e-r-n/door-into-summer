@@ -58,20 +58,19 @@ struct Figure: View {
 
 struct Skeleton: View {
     let ratio: Ratio
-    let shape: Shape3D
     let running: Bool
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Color.desk
-            AsciiShape(shape: shape, running: running)
-            Text(ratio.label)
-                .foregroundStyle(Color.tertiaryText)
-                .textSelection(.enabled)
-                .padding(.trailing, 12)
-                .padding(.bottom, 10)
-        }
-        .aspectRatio(ratio.value, contentMode: .fit)
-        .frame(maxWidth: ratio.figureWidth)
+        Color.desk
+            .overlay { TextLoader(running: running) }
+            .overlay(alignment: .bottomTrailing) {
+                Text(ratio.label)
+                    .foregroundStyle(Color.tertiaryText)
+                    .textSelection(.enabled)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 10)
+            }
+            .aspectRatio(ratio.value, contentMode: .fit)
+            .frame(maxWidth: ratio.figureWidth)
     }
 }
