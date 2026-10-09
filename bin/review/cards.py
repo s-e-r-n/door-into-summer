@@ -99,10 +99,13 @@ def shown_image(name: str, slot: str, image: Image | None) -> dict | None:
     return {"label": image.label, "src": f"/image/{name}/{slot}?v={image.source.version}"}
 
 
+def shown_attempt(name: str, card: Card) -> dict:
+    return {"at": iso_time(card.at), "original": shown_image(name, "original", card.original),
+            "generation": shown_image(name, "generation", card.generation)}
+
+
 def shown_card(name: str, card: Card) -> dict:
-    shown = {"session": name, "subject": card.subject, "attempt": card.attempt, "at": iso_time(card.at),
-             "original": shown_image(name, "original", card.original),
-             "generation": shown_image(name, "generation", card.generation)}
+    shown = {"session": name, "subject": card.subject, "attempt": card.attempt} | shown_attempt(name, card)
     return shown if card.working is None else shown | {"working": {"aspect": card.working.aspect}}
 
 
@@ -112,6 +115,8 @@ def image_location(image: Image | None) -> str | None:
     return image.source.url if isinstance(image.source, Linked) else image.source.path
 
 
-def local_path(card: Card, slot: str) -> str | None:
+def local_path(card: Card, slot: str, version: int | None) -> str | None:
     image = {"original": card.original, "generation": card.generation}.get(slot)
-    return image.source.path if image is not None and isinstance(image.source, Local) else None
+    if image is None or not isinstance(image.source, Local) or version not in (None, image.source.version):
+        return None
+    return image.source.path

@@ -6,6 +6,7 @@ import mimetypes
 import sys
 import threading
 from pathlib import Path
+from urllib.parse import parse_qs
 
 from review import sessions, store, validation
 from review.board import Board
@@ -80,6 +81,11 @@ def parsed_validation(body: bytes) -> tuple[str, int] | str:
     return session, attempt
 
 
+def version_in(query: str) -> int | None:
+    versions = parse_qs(query).get("v", [])
+    return int(versions[-1]) if versions and versions[-1].isascii() and versions[-1].isdigit() else None
+
+
 def refused_path(error: OSError) -> str:
     reason = error.strerror or str(error)
     return reason if error.filename is None else f"{error.filename}: {reason}"
@@ -91,7 +97,7 @@ def validated(body: bytes, board: Board) -> tuple[int, dict]:
         return 400, {"error": request}
     session, attempt = request
     try:
-        return 200, {"file": validation.validate(session, attempt, board.card(session))}
+        return 200, {"file": validation.validate(session, attempt, board.card(session, attempt))}
     except validation.NotShown as unshown:
         return 404, {"error": str(unshown)}
     except store.AlreadyFiled as filed:
@@ -111,7 +117,7 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
         def do_GET(self):
             if not self.trusted():
                 return
-            route = self.path.split("?", 1)[0]
+            route, _, query = self.path.partition("?")
             if route == "/":
                 self.answer(200, "text/html; charset=utf-8", served_page())
             elif route == "/cards":
@@ -119,7 +125,7 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
             elif route == "/events":
                 self.streamed_events()
             elif route.startswith("/image/") and route.count("/") == 3:
-                self.served_image(*route.split("/")[2:])
+                self.served_image(*route.split("/")[2:], version_in(query))
             else:
                 self.not_found()
 
@@ -158,8 +164,8 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
             except (BrokenPipeError, ConnectionResetError):
                 return
 
-        def served_image(self, name, slot):
-            path = board.image_path(name, slot)
+        def served_image(self, name, slot, version):
+            path = board.image_path(name, slot, version)
             content_type = mimetypes.guess_type(path)[0] if path else None
             if content_type is None or not content_type.startswith("image/"):
                 self.not_found()

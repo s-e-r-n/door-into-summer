@@ -215,7 +215,8 @@ ab press Enter >/dev/null
 typed mug '   '
 ab press Enter >/dev/null
 sleep 0.5
-expect "Enter on an empty or blank box sends nothing and shows no bubble" "$(messages mug) $(conversation mug)" "0 []"
+expect "Enter on an empty or blank box sends nothing: the card shows the session's answer alone, attempt 1" \
+  "$(messages mug) $(conversation mug)" '0 ["attempt 1"]'
 page 'document.querySelector("article[data-session=mug] textarea").value = ""; "cleared"' >/dev/null
 
 typed mug 'ligne un, "citée", déjà vu'
@@ -232,7 +233,7 @@ printf 'feedback · attempt 1: ligne un, "citée", déjà vu\nligne deux 🌞�
 expect "it lands exactly once, as hy-session.sh send writes it, line break, accents and emoji kept byte for byte" \
   "$(messages mug) $(cmp "$root/expected" "$home/state/mug.inbox/001.msg" && echo same)" "1 same"
 expect "the box is cleared, the bubble holds the text byte for byte, one tick of two" \
-  "$(box mug) $(conversation mug)" '"" [["ligne un, \"citée\", déjà vu\nligne deux 🌞🙂 à gauche",1]]'
+  "$(box mug) $(conversation mug)" '"" ["attempt 1",["ligne un, \"citée\", déjà vu\nligne deux 🌞🙂 à gauche",1]]'
 expect "the bubble sits on the right of its card" \
   "$(page 'const bubble = document.querySelector("article[data-session=mug] .said").getBoundingClientRect(), list = document.querySelector("article[data-session=mug] .conversation").getBoundingClientRect(); String(Math.round(bubble.right) === Math.round(list.right) && bubble.left > list.left)')" true
 expect "no other session receives it" "$(messages chair) $(messages lamp)" "0 0"
@@ -243,13 +244,13 @@ pressed="$(now_ms)"
 ab press Enter >/dev/null
 within "two feedbacks in a row before the session reads the first: the second lands" "$(landed_after "$pressed" mug 2)" 1000
 within "both bubbles show in order, one tick each" "$(seen_after "$pressed")" 1000
-expect "two messages, in order, neither read" "$(messages mug) $(conversation mug | jq -c 'map(.[1])')" "2 [1,1]"
+expect "two messages, in order, neither read" "$(messages mug) $(conversation mug | jq -c 'map(select(type == "array") | .[1])')" "2 [1,1]"
 
 armed "$(said_with mug 'read delivered')"
 read_at="$(now_ms)"
 taken mug 001
 within "the second tick colours once the session moves the message to handled/" "$(seen_after "$read_at")" 1000
-expect "the first bubble has two ticks, the second still one" "$(conversation mug | jq -c 'map(.[1])')" "[2,1]"
+expect "the first bubble has two ticks, the second still one" "$(conversation mug | jq -c 'map(select(type == "array") | .[1])')" "[2,1]"
 taken mug 002
 
 typed mug 'et la anse'
@@ -262,7 +263,7 @@ shown mug "a coffee mug" 2 "$root/images/mug-2.svg" "$root/images/mug-original.s
 within "the session's answer, attempt 2, shows on the left once images.json reaches it" "$(seen_after "$written")" 1000
 expect "the answer follows every feedback given on attempt 1, the one sent while generating included" \
   "$(conversation mug | jq -c 'map(if type == "array" then .[0] else . end)')" \
-  '["ligne un, \"citée\", déjà vu\nligne deux 🌞🙂 à gauche","plus chaud","et la anse","attempt 2"]'
+  '["attempt 1","ligne un, \"citée\", déjà vu\nligne deux 🌞🙂 à gauche","plus chaud","et la anse","attempt 2"]'
 expect "the answer sits on the left of its card" \
   "$(page 'const bubble = document.querySelector("article[data-session=mug] .answered").getBoundingClientRect(), list = document.querySelector("article[data-session=mug] .conversation").getBoundingClientRect(); String(Math.round(bubble.left) === Math.round(list.left) && bubble.right < list.right)')" true
 taken mug 003
@@ -273,7 +274,7 @@ taken mug 004
 shown mug "a coffee mug" 3 "$root/images/mug-3.svg" "$root/images/mug-original.svg"
 sleep 0.5
 expect "a second round reads feedback, attempt 2, feedback, attempt 3, every tick read" \
-  "$(conversation mug | jq -c 'map(if type == "array" then .[1] else . end)')" '[2,2,2,"attempt 2",2,"attempt 3"]'
+  "$(conversation mug | jq -c 'map(if type == "array" then .[1] else . end)')" '["attempt 1",2,2,2,"attempt 2",2,"attempt 3"]'
 
 page 'for (const session of ["chair", "lamp"]) { const card = document.querySelector(`article[data-session=${session}]`); card.querySelector("textarea").value = `au même moment, ${session}`; } for (const session of ["chair", "lamp"]) document.querySelector(`article[data-session=${session}] button`).click(); "sent"' >/dev/null
 landed_after "$(now_ms)" chair 1 >/dev/null
@@ -283,7 +284,7 @@ expect "feedbacks on two cards at the same moment land once each, each in its ow
   "$(messages chair) $(messages lamp) $(grep -h '' "$home/state/chair.inbox/001.msg" "$home/state/lamp.inbox/001.msg" | tr '\n' '|')" \
   "1 1 feedback · attempt 1: au même moment, chair|feedback · attempt 1: au même moment, lamp|"
 expect "each card shows its own bubble with its first tick" "$(conversation chair) $(conversation lamp)" \
-  '[["au même moment, chair",1]] [["au même moment, lamp",1]]'
+  '["attempt 1",["au même moment, chair",1]] ["attempt 1",["au même moment, lamp",1]]'
 expect "the doorbell of lamp failed, its message waits in the inbox, and the card shows no refusal" \
   "$(page 'String(document.querySelector("article[data-session=lamp] .refused").hidden)') $(env PATH="$root/stub:$PATH" bash "$session_script" send lamp 'probe' 2>&1 | grep -c 'Doorbell failed')" "true 1"
 rm "$home/state/lamp.inbox/002.msg"
@@ -291,7 +292,7 @@ rm "$home/state/lamp.inbox/002.msg"
 page 'const box = document.querySelector("article[data-session=lamp] textarea"); box.value = "deux fois"; for (const _ of [1, 2]) box.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})); "pressed"' >/dev/null
 ab press Enter >/dev/null
 sleep 1.5
-expect "a fast double Enter sends once" "$(messages lamp) $(conversation lamp | jq -c 'map(.[0])')" '2 ["au même moment, lamp","deux fois"]'
+expect "a fast double Enter sends once" "$(messages lamp) $(conversation lamp | jq -c 'map(select(type == "array") | .[0])')" '2 ["au même moment, lamp","deux fois"]'
 
 printf -- '-- focus, scroll, restart\n'
 
@@ -359,7 +360,7 @@ armed '!document.querySelector("article[data-session=chair]")'
 written="$(now_ms)"
 rm -rf "$home/state/chair.meta" "$home/state/chair.inbox" "$home/data/chair"
 within "a session closed with a feedback pending loses its card" "$(seen_after "$written")" 1000
-expect "the other cards keep their bubbles" "$(conversation mug | jq length) $(conversation lamp | jq length)" "8 2"
+expect "the other cards keep their bubbles" "$(conversation mug | jq length) $(conversation lamp | jq length)" "9 3"
 
 lost_answer() {
   mkdir -p "$home/state/vase.inbox/handled"
@@ -370,7 +371,7 @@ lost_answer() {
   stopped
   for _ in $(seq 20); do [ "$(page 'String(!document.querySelector("article[data-session=vase] .refused").hidden)')" = true ] && break; sleep 0.1; done
   [ -z "$2" ] || ab keyboard type "$2" >/dev/null
-  restored="$(box vase) $(conversation vase | jq length)"
+  restored="$(box vase) $(conversation vase | jq 'map(select(type == "array")) | length')"
   rm "$home/state/vase.inbox/.lock"
   landed_after "$(now_ms)" vase "$3" >/dev/null
 }
@@ -385,26 +386,26 @@ up="$(now_ms)"
 served bin-next
 within "once the server is back and the message shows as a bubble, the restored text leaves the box" "$(seen_after "$up")" 1000
 expect "the message was sent once, the refusal is gone" \
-  "$(messages vase) $(page 'String(document.querySelector("article[data-session=vase] .refused").hidden)') $(conversation vase | jq -c 'map(.[0])')" \
+  "$(messages vase) $(page 'String(document.querySelector("article[data-session=vase] .refused").hidden)') $(conversation vase | jq -c 'map(select(type == "array") | .[0])')" \
   '1 true ["une seule fois"]'
 lost_answer 'encore une' ' corrigée' 2
 expect "the server dies again, and the reviewer edits the restored text" "$restored" '"encore une corrigée" 1'
 served bin-next
 sleep 1
 expect "an edited restored text stays in the box once the message shows" \
-  "$(box vase) $(conversation vase | jq -c 'map(.[0])')" '"encore une corrigée" ["une seule fois","encore une"]'
+  "$(box vase) $(conversation vase | jq -c 'map(select(type == "array") | .[0])')" '"encore une corrigée" ["une seule fois","encore une"]'
 rm -rf "$home/state/vase.meta" "$home/state/vase.inbox" "$home/data/vase"
 
 printf -- '-- what the server leaves\n'
 
 printf 'not a feedback\n' > "$home/state/mug.inbox/handled/900.msg"
 sleep 0.5
-expect "a hypnos follow-up in the same inbox is no bubble" "$(conversation mug | jq length)" 8
+expect "a hypnos follow-up in the same inbox is no bubble" "$(conversation mug | jq length)" 9
 rm "$home/data/mug/images.json"
 printf '{"subject": ' > "$home/data/mug/images.json"
 sleep 1
 expect "a missing or half written images.json leaves the card as it was" \
-  "$(page 'document.querySelector("article[data-session=mug] h2").textContent') $(conversation mug | jq length)" 'a coffee mug · attempt 4 · mug 8'
+  "$(page 'document.querySelector("article[data-session=mug] h2").textContent') $(conversation mug | jq length)" 'a coffee mug · attempt 4 · mug 9'
 expect "the page never reads /cards: every change is pushed" \
   "$(page 'String(performance.getEntriesByType("resource").filter((entry) => entry.name.includes("/cards")).length)')" 0
 armed '!document.querySelector("article[data-session=mug]")'

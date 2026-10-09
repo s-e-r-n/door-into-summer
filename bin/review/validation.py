@@ -54,8 +54,6 @@ class Match:
 
 
 def job_of(session: str, attempt: int, card: Card) -> UUID:
-    if card.attempt != attempt:
-        raise NotShown(f"The card of {session} shows attempt {card.attempt}, not {attempt}.")
     if card.job is None:
         raise NotShown(f"Attempt {attempt} of {session} names no job.")
     key = store.job_key(card.job)
@@ -165,7 +163,7 @@ def rename_without_replacing(source: Path, target: Path) -> None:
 
 def validate(session: str, attempt: int, card: Card | None) -> str:
     if card is None:
-        raise NotShown(f"No live session {session} shows a card.")
+        raise NotShown(f"No card of {session} shows attempt {attempt}.")
     job = job_of(session, attempt, card)
     job_id = str(job)
     filed = store.file_of(job_id)

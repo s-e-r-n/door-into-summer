@@ -65,15 +65,15 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 | `GET /` | the review page, `bin/review-window.html` |
 | `GET /events` | server-sent events: `event: page` with the version of the page served, then the cards at once and at each change |
 | `GET /cards` | the cards once, as JSON |
-| `GET /image/<name>/<slot>` | the file of an image given by `path`, `<slot>` `original` or `generation` |
+| `GET /image/<name>/<slot>` | the file of an image given by `path`, `<slot>` `original` or `generation`: with the `?v=<version>` of a `src`, the file of the attempt whose image in that slot has that version; without, the current card's |
 | `POST /feedback` | takes `{"session", "attempt", "text", "reference"}`, `reference` `{"job", "url"}`, left out or null without an image reference; writes the inbox message |
-| `POST /validate` | takes `{"session", "attempt"}`; files the image of that attempt in the gallery and its line in store.jsonl |
+| `POST /validate` | takes `{"session", "attempt"}`; files the image of that attempt, the current one or an earlier answer of the conversation, in the gallery and its line in store.jsonl |
 
 | Route | Status | When |
 | --- | --- | --- |
 | any | 403 | a Host other than `127.0.0.1:<port>` or `localhost:<port>`, or another Origin |
 | any | 404 | an unknown route |
-| `GET /image/<name>/<slot>` | 404 | no local image in that slot |
+| `GET /image/<name>/<slot>` | 404 | no local image in that slot, or none of the version `v` names |
 | `POST` | 415 | a body other than `application/json` |
 | `POST` | 413 | a body outside 1 byte to 1 MiB |
 | `POST /feedback` | 200 `{"number"}` | the message is in the inbox, the doorbell rung or not |
@@ -83,7 +83,7 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 | `POST /feedback` | 400 `{"error"}` | a `text` of more than one line beside a `reference` |
 | `POST /feedback` | 400 `{"error"}` | another body |
 | `POST /validate` | 200 `{"file"}` | the image is in the gallery and its line in store.jsonl |
-| `POST /validate` | 404 `{"error"}` | no card of `session` shows `attempt` |
+| `POST /validate` | 404 `{"error"}` | no card of `session` shows `attempt` among the answers of its conversation |
 | `POST /validate` | 404 `{"error"}` | the card names no job, or a job that is not a Higgsfield job id, 32 hex digits once its hyphens are removed |
 | `POST /validate` | 409 `{"error", "file"}` | the job is already in store.jsonl; two validations of one job file one image and one line |
 | `POST /validate` | 502 `{"error"}` | the job unread by Higgsfield |
@@ -137,7 +137,14 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 | `conversation[]` item | Shape |
 | --- | --- |
 | a reviewer's feedback | `{"from": "reviewer", "number", "attempt", "text", "state", "sent_at", "reference"}` |
-| a session's answer | `{"from": "session", "attempt"}`, once images.json reaches an attempt later than the one the feedbacks before it were given on |
+| a session's answer | `{"from": "session", "attempt", "at", "original", "generation", "job", "validated"}`, one per attempt: each attempt images.json reaches while the backend runs, and each attempt a feedback names; it comes before the first feedback given on its attempt or a later one |
+
+| Answer field | Value |
+| --- | --- |
+| `attempt` | the attempt of images.json it answers with |
+| `at`, `original`, `generation`, `job`, `validated` | those of the card while it showed that attempt; `at` is the mtime of the first images.json that showed it, which the write adding `working` leaves |
+| kept | in memory, from the first images.json that shows the attempt until the backend stops or the session closes; the attempt written again with other content than `working` takes it, with its time |
+| absent | every field but `from` and `attempt`, on an attempt the backend did not see, such as one a feedback names from before the backend started |
 
 | Feedback field | Value |
 | --- | --- |
