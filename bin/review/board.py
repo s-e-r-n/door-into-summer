@@ -25,6 +25,12 @@ def shown(name: str, card: Card, kept: dict[int, Card], filed: set[str]) -> dict
     return shown_card(name, card) | job_fields(card, filed) | {"conversation": conversation}
 
 
+def events_between(sent: dict[str, dict], shown: dict[str, dict]) -> list[tuple[str, object]]:
+    updates = [("session_update", card) for name, card in shown.items() if sent.get(name) != card]
+    deletes = [("session_delete", name) for name in sent if name not in shown]
+    return updates + deletes
+
+
 def kept_card(previous: Card | None, card: Card) -> Card:
     unchanged = previous is not None and replace(card, at=previous.at, working=previous.working) == previous
     return previous if unchanged else card
@@ -36,7 +42,7 @@ class Board:
         self.cards: dict[str, Card] = {}
         self.attempts: dict[str, dict[int, Card]] = {}
         self.filed: set[str] = set()
-        self.shown: list[dict] = []
+        self.shown: dict[str, dict] = {}
         self.version = 0
 
     def refresh(self) -> None:
@@ -52,7 +58,7 @@ class Board:
                 kept = self.attempts.get(name, {})
                 cards[name] = card
                 attempts[name] = kept | {card.attempt: kept_card(kept.get(card.attempt), card)}
-        listed = [shown(name, card, attempts[name], filed) for name, card in cards.items()]
+        listed = {name: shown(name, card, attempts[name], filed) for name, card in cards.items()}
         with self.changed:
             self.cards = cards
             self.attempts = attempts
@@ -62,11 +68,11 @@ class Board:
                 self.version += 1
                 self.changed.notify_all()
 
-    def latest(self) -> tuple[int, list[dict]]:
+    def latest(self) -> tuple[int, dict[str, dict]]:
         with self.changed:
             return self.version, self.shown
 
-    def next_after(self, version: int) -> tuple[int, list[dict]]:
+    def next_after(self, version: int) -> tuple[int, dict[str, dict]]:
         with self.changed:
             self.changed.wait_for(lambda: self.version != version, timeout=keepalive_seconds)
             return self.version, self.shown

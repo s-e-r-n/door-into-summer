@@ -78,9 +78,54 @@ shown() {
   mv "$images.tmp" "$images"
 }
 
+pushed_board() {
+  python3 -I - "$root/events" <<'PY'
+import json
+import sys
+
+board = {}
+event = "ready"
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.rstrip("\n")
+    if line.startswith("event: "):
+        event = line[7:]
+    elif line.startswith("data: "):
+        try:
+            data = json.loads(line[6:])
+        except ValueError:
+            continue
+        if event == "ready":
+            board = {card["session"]: card for card in data}
+        elif event == "session_update":
+            board[data["session"]] = data
+        elif event == "session_delete":
+            board.pop(data, None)
+        event = "ready"
+print(json.dumps([*board.values()]))
+PY
+}
+
+frames_after() {
+  tail -n +"$(($1 + 1))" "$root/events" | python3 -I -c '
+import json
+import sys
+
+event = "data"
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if line.startswith("event: "):
+        event = line[7:]
+    elif line.startswith("data: "):
+        data = json.loads(line[6:])
+        names = [card["session"] for card in data] if isinstance(data, list) else [data["session"] if isinstance(data, dict) else data]
+        print(event, *names)
+        event = "data"
+' | paste -sd '|' -
+}
+
 pushed_after() {
   for _ in $(seq 100); do
-    if sed -n 's/^data: \(\[.*\)$/\1/p' "$root/events" | tail -1 | jq -e "$2" >/dev/null 2>&1; then
+    if pushed_board | jq -e "$2" >/dev/null 2>&1; then
       printf '%s' "$(($(now_ms) - $1))"
       return
     fi
@@ -207,8 +252,10 @@ expect "two messages, in order, neither read" "$(messages mug) $(conversation mu
   '2 ["delivered","delivered"]'
 
 read_at="$(now_ms)"
+frames_before="$(wc -l < "$root/events" | tr -d ' ')"
 taken mug 001
 within "read is pushed once the session moves the message to handled/" "$(pushed_after "$read_at" "$(said_with mug 'read delivered')")" 1000
+expect "that one change is pushed as one session_update holding mug alone" "$(frames_after "$frames_before")" "session_update mug"
 expect "the first feedback is read, the second still delivered" "$(conversation mug | jq -c 'map(select(type == "array") | .[1])')" \
   '["read","delivered"]'
 taken mug 002

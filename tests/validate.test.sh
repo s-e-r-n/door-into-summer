@@ -90,14 +90,33 @@ until_true() {
   printf 'never: %s\n' "$1"
 }
 
+pushed_cards() {
+  python3 -I - "$root/events" "$1" <<'PY'
+import json
+import sys
+
+event = "ready"
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.rstrip("\n")
+    if line.startswith("event: "):
+        event = line[7:]
+    elif line.startswith("data: "):
+        data = json.loads(line[6:])
+        cards = data if event == "ready" else [data] if event == "session_update" else []
+        for card in cards:
+            if card["session"] == sys.argv[2]:
+                print(json.dumps(card))
+        event = "ready"
+PY
+}
+
 pushed_answers() {
-  sed -n 's/^data: \(\[.*\)$/\1/p' "$root/events" |
-    jq -cs --arg session "$1" --argjson attempt "$2" "map(.[] | select(.session == \$session and .attempt == \$attempt)) | $3 | [.conversation[] | select(.from == \"session\") | $4]"
+  pushed_cards "$1" |
+    jq -cs --argjson attempt "$2" "map(select(.attempt == \$attempt)) | $3 | [.conversation[] | select(.from == \"session\") | $4]"
 }
 
 pushed_validated() {
-  sed -n 's/^data: \(\[.*\)$/\1/p' "$root/events" | jq -r --arg session "$1" '.[] | select(.session == $session) | .validated' |
-    uniq | tr '\n' ' '
+  pushed_cards "$1" | jq -r '.validated' | uniq | tr '\n' ' '
 }
 
 line_of() {

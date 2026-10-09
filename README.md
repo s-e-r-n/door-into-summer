@@ -62,7 +62,7 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 
 | Route | Answer |
 | --- | --- |
-| `GET /events` | server-sent events: the cards at once and at each change |
+| `GET /events` | server-sent events: `event: ready` with every card on connect, then `event: session_update` with the one card whose JSON changed and `event: session_delete` with the name of a session gone; `: alive` every 15 s without a change |
 | `GET /cards` | the cards once, as JSON |
 | `GET /image/<name>/<slot>` | the file of an image given by `path`, `<slot>` `original` or `generation`: with the `?v=<version>` of a `src`, the file of the attempt whose image in that slot has that version; without, the current card's |
 | `POST /feedback` | takes `{"session", "attempt", "text", "reference"}`, `reference` `{"job", "url"}`, left out or null without an image reference; writes the inbox message |
@@ -117,7 +117,7 @@ app/.build/debug/DoorIntoSummer <command> <arguments>     prints one line saying
 | success of `send` | one `@<session> attempt <n> message <number>: <text>` line per session, ` reference <job> <url>` after it with a reference, then `sent: <n> messages` | stdout | 0 |
 | success of `cards` | each card and its conversation, as [Card](#card) prints them, then `listed: <n> sessions` | stdout | 0 |
 | success of `validate` | `filed: <file name>` | stdout | 0 |
-| success of `events` | one `cards: <session> attempt <n>, ...` line per frame, then `followed: <n> frames` | stdout | 0 |
+| success of `events` | one line per event, `ready: <session> attempt <n>, ...`, `session_update: <session> attempt <n>` or `session_delete: <session>`, then `followed: <n> frames` | stdout | 0 |
 | `--help` | the usage | stdout | 0 |
 
 ### Card

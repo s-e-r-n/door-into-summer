@@ -32,20 +32,19 @@ final class Chat {
     }
 
     func start() async {
-        for await board in server.boards() {
-            switch board {
-            case .cards(let cards):
-                thread.apply(cards)
-                connection = .live
-            case .lost:
+        for await event in server.events() {
+            if case .lost = event {
                 connection = .lost
+            } else {
+                thread.apply(event)
+                connection = .live
             }
         }
     }
 
     func load() async -> Bool {
         guard let loaded = try? await server.cards() else { return false }
-        thread.apply(loaded)
+        thread.apply(.ready(loaded))
         connection = .live
         return true
     }

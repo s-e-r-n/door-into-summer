@@ -103,7 +103,7 @@ silent_cards = Path(sys.argv[1])
 class Elsewhere(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/events":
-            self.answer("text/event-stream", b"data: []\n\n")
+            self.answer("text/event-stream", b"event: ready\ndata: []\n\n")
         elif self.path == "/silent/cards":
             self.answer("application/json", silent_cards.read_bytes())
         else:
@@ -150,10 +150,10 @@ expect "validated: false before any validation" "$(printf '%s' "$card_a" | sed -
 expect "a card without job or working reads unavailable and none" "$(printf '%s\n' "$cards" | grep '^session b ' | sed -n 's/.* job \(.*\) validated.*/\1/p')" "unavailable working none"
 
 expect "events: the success line closes the frames" "$(outcome events "$url" 1)" "0 stdout followed: 1 frames"
-expect "events: the first frame of the stream decodes, ended by the blank line the stream sends" "$(sed -n 1p "$root/out")" "cards: b attempt 2, a attempt 1"
+expect "events: the ready event of the stream decodes, ended by the blank line the stream sends" "$(sed -n 1p "$root/out")" "ready: b attempt 2, a attempt 1"
 ( sleep 0.4; shown b 3 '{}' ) &
 changer="$!"
-expect "events: a change pushes a second frame" "$("$client" events "$url" 2 | sed -n 2p)" "cards: b attempt 3, a attempt 1"
+expect "events: a change pushes a session_update holding the changed session alone" "$("$client" events "$url" 2 | sed -n 2p)" "session_update: b attempt 3"
 wait "$changer"
 shown b 2 '{}'
 sleep 0.3
