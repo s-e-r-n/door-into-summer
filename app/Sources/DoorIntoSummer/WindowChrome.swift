@@ -1,6 +1,16 @@
 import AppKit
 import SwiftUI
 
+struct TitleBar: View {
+    var body: some View {
+        Color.clear
+            .frame(height: Layout.titleBarHeight)
+            .contentShape(Rectangle())
+            .gesture(WindowDragGesture())
+            .allowsWindowActivationEvents()
+    }
+}
+
 struct WindowChrome: NSViewRepresentable {
     func makeNSView(context: Context) -> ChromeView {
         ChromeView()
@@ -18,6 +28,5 @@ final class ChromeView: NSView {
         }
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
     }
 }

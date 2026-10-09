@@ -15,6 +15,7 @@ struct ChatView: View {
             panel
         }
         .animation(Layout.panelMotion, value: open)
+        .overlay(alignment: .top) { TitleBar() }
         .background { WindowChrome().frame(width: 0, height: 0) }
         .font(.mono)
         .foregroundStyle(Color.foreground)
