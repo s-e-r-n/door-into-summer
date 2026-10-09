@@ -13,6 +13,7 @@ from math import cos, pi
 from pathlib import Path, PurePosixPath
 from statistics import median
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from review import jobs, store
 from review.cards import Card, image_location
@@ -26,6 +27,7 @@ match_bits = 10
 needed_fields = ("result_url", "model", "aspect", "quality", "resolution", "batch", "prompt")
 file_extension = re.compile(r"\A\.[A-Za-z0-9]+\Z")
 hex_fingerprint = re.compile(r"\A[0-9A-Fa-f]{16}\Z")
+hex_job = re.compile(r"\A[0-9a-f]{32}\Z")
 
 
 class NotShown(Exception):
@@ -51,14 +53,15 @@ class Match:
     distance: int
 
 
-def job_of(session: str, attempt: int, card: Card) -> str:
+def job_of(session: str, attempt: int, card: Card) -> UUID:
     if card.attempt != attempt:
         raise NotShown(f"The card of {session} shows attempt {card.attempt}, not {attempt}.")
     if card.job is None:
         raise NotShown(f"Attempt {attempt} of {session} names no job.")
-    if "/" in card.job or "\0" in card.job:
-        raise NotShown(f"The job of {session} cannot name a gallery file.")
-    return card.job
+    key = store.job_key(card.job)
+    if not hex_job.match(key):
+        raise NotShown(f"The job of {session} is not a Higgsfield job id, a UUID.")
+    return UUID(hex=key)
 
 
 def generation_of(job_id: str) -> Generation:
@@ -116,9 +119,9 @@ def tool_output(command: list[str], path: Path) -> bytes:
     return result.stdout
 
 
-def write_job_id(path: Path, job_id: str) -> None:
-    tool_output(["exiftool", "-m", "-q", "-overwrite_original", f"-IPTC:OriginalTransmissionReference={job_id}",
-                 f"-XMP-photoshop:TransmissionReference={job_id}", str(path)], path)
+def write_job_id(path: Path, job: UUID) -> None:
+    tool_output(["exiftool", "-q", "-overwrite_original", f"-IPTC:OriginalTransmissionReference={job.hex}",
+                 f"-XMP-photoshop:TransmissionReference={job}", str(path)], path)
 
 
 def frequencies(values: Sequence[float], count: int) -> list[float]:
@@ -163,8 +166,9 @@ def rename_without_replacing(source: Path, target: Path) -> None:
 def validate(session: str, attempt: int, card: Card | None) -> str:
     if card is None:
         raise NotShown(f"No live session {session} shows a card.")
-    job_id = job_of(session, attempt, card)
-    filed = store.files_by_job().get(job_id)
+    job = job_of(session, attempt, card)
+    job_id = str(job)
+    filed = store.file_of(job_id)
     if filed is not None:
         raise store.AlreadyFiled(job_id, filed)
     gallery = store.gallery_in(store.config_file)
@@ -176,7 +180,7 @@ def validate(session: str, attempt: int, card: Card | None) -> str:
     temporary = gallery / f".{job_id}-{secrets.token_hex(4)}{generation.extension}"
     try:
         download(generation.result_url, temporary)
-        write_job_id(temporary, job_id)
+        write_job_id(temporary, job)
         hashed = fingerprint(temporary)
         rename_without_replacing(temporary, gallery / name)
     finally:

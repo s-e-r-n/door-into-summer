@@ -84,7 +84,7 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 | `POST /feedback` | 400 `{"error"}` | another body |
 | `POST /validate` | 200 `{"file"}` | the image is in the gallery and its line in store.jsonl |
 | `POST /validate` | 404 `{"error"}` | no card of `session` shows `attempt` |
-| `POST /validate` | 404 `{"error"}` | the card names no job, or a job holding a `/` or a NUL |
+| `POST /validate` | 404 `{"error"}` | the card names no job, or a job that is not a Higgsfield job id, 32 hex digits once its hyphens are removed |
 | `POST /validate` | 409 `{"error", "file"}` | the job is already in store.jsonl; two validations of one job file one image and one line |
 | `POST /validate` | 502 `{"error"}` | the job unread by Higgsfield |
 | `POST /validate` | 502 `{"error"}` | `result_url` not downloaded, or naming no file extension |
@@ -198,14 +198,15 @@ reference: <job id> <image url>
 | Field | Value |
 | --- | --- |
 | line | one JSON object per validated job in store.jsonl, written whole or not at all, never edited |
-| `job`, `session`, `subject` | from the card |
+| `job` | the card's job id in its 36-character lowercase form; every lookup of a job id, in store.jsonl and for a card's `validated`, compares ids without hyphens and in lowercase |
+| `session`, `subject` | from the card |
 | `validated_at` | the time of the validation, local, with its offset, such as `2026-10-09T10:00:00+02:00` |
 | `model` | the job's `display_name`, as on the card |
 | `parameters`, `prompt` | from the job, as on the card; `ratio` is its `aspect` |
 | `original` | the `url` or `path` of the card's original, null when it has none |
 | `file` | `<YYYY-MM-DD>-<session>-<job>.<ext>` in the gallery: the day of the validation in local time, `ext` from `result_url`; never written over an existing file |
 | `fingerprint` | the image's 64-bit perceptual hash, in hex. ImageMagick exports the first frame as a 32x32 grayscale; a DCT-II keeps its 8x8 lowest frequencies, the constant term included. Each bit tells whether a coefficient, row by row, is above their median; the first bit is the most significant. `--match` passes over a line whose fingerprint is not 16 hex digits |
-| image | `result_url` at full resolution, with the job id written whole by exiftool, pixels untouched, into IPTC `OriginalTransmissionReference` (IIM 2:103, the Job Identifier, bounded to 32 bytes, 36 written) and XMP `photoshop:TransmissionReference` |
+| image | `result_url` at full resolution, with the job id written whole by exiftool, pixels untouched, into IPTC `OriginalTransmissionReference` (IIM 2:103, the Job Identifier, 32 bytes at most) as its 32 hex digits without hyphens, and into XMP `photoshop:TransmissionReference` in its 36-character form |
 | written by | `POST /validate`, the only way into the gallery; from a shell, `app/.build/debug/DoorIntoSummer validate <server url> <session> <attempt>`, which prints the file name |
 
 ### Paths

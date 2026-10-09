@@ -117,6 +117,10 @@ def lines() -> list[dict]:
     return [line for line in map(parsed_line, store_file.read_bytes().split(b"\n")) if line is not None]
 
 
+def job_key(job: str) -> str:
+    return job.replace("-", "").lower()
+
+
 def files_by_job() -> dict[str, str]:
     return {line["job"]: line["file"] for line in lines()
             if isinstance(line.get("job"), str) and isinstance(line.get("file"), str)}
@@ -124,6 +128,11 @@ def files_by_job() -> dict[str, str]:
 
 def job_ids() -> set[str]:
     return set(files_by_job())
+
+
+def file_of(job: str) -> str | None:
+    key = job_key(job)
+    return next((file for filed, file in files_by_job().items() if job_key(filed) == key), None)
 
 
 def write_whole(descriptor: int, encoded: bytes) -> None:
@@ -141,7 +150,7 @@ def append(line: Line) -> None:
     descriptor = os.open(store_file, os.O_WRONLY | os.O_APPEND)
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX)
-        filed = files_by_job().get(line.job)
+        filed = file_of(line.job)
         if filed is not None:
             raise AlreadyFiled(line.job, filed)
         write_whole(descriptor, encoded)
