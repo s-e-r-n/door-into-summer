@@ -15,7 +15,6 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
 | ImageMagick 7, `magick` | `brew install imagemagick` |
 | `jq`, for the tests | ships with macOS 26 |
 | `curl`, for the tests | ships with macOS 26 |
-| `agent-browser`, for `tests/review-window.test.sh` | `npm install -g agent-browser && agent-browser install` |
 
 ## Set up
 
@@ -62,8 +61,7 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 
 | Route | Answer |
 | --- | --- |
-| `GET /` | the review page, `bin/review-window.html` |
-| `GET /events` | server-sent events: `event: page` with the version of the page served, then the cards at once and at each change |
+| `GET /events` | server-sent events: the cards at once and at each change |
 | `GET /cards` | the cards once, as JSON |
 | `GET /image/<name>/<slot>` | the file of an image given by `path`, `<slot>` `original` or `generation`: with the `?v=<version>` of a `src`, the file of the attempt whose image in that slot has that version; without, the current card's |
 | `POST /feedback` | takes `{"session", "attempt", "text", "reference"}`, `reference` `{"job", "url"}`, left out or null without an image reference; writes the inbox message |
@@ -71,7 +69,7 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 
 | Route | Status | When |
 | --- | --- | --- |
-| any | 403 | a Host other than `127.0.0.1:<port>` or `localhost:<port>`, or another Origin |
+| any | 403 | a Host other than `127.0.0.1:<port>` or `localhost:<port>`, or any Origin |
 | any | 404 | an unknown route |
 | `GET /image/<name>/<slot>` | 404 | no local image in that slot, or none of the version `v` names |
 | `POST` | 415 | a body other than `application/json` |
@@ -239,13 +237,12 @@ reference: <job id> <image url>
 | Repository path | Holds |
 | --- | --- |
 | `bin/review_window.py` | the backend |
-| `bin/review-window.html` | the review page |
 | `app/scripts/make_app.sh` | builds `app/.build/Door into Summer.app` |
 | `app/.build/debug/DoorIntoSummer` | the app's command line, built by `swift build --package-path app` |
 | `app/Sources/DoorIntoSummer/Fonts` | JetBrains Mono Thin and Thin Italic, with their OFL license |
 | `app/Tests/` | `swift test --package-path app`: the message parser |
 | `app/Tests/chat-client.test.sh` | each line of the backend contract the app reads, through its command line |
-| `tests/review-window.test.sh` | the review page, headless through agent-browser |
+| `tests/review-window.test.sh` | the serving, through curl: the push on `/events`, `POST /feedback` into the inboxes, the Host and Origin checks, a restart, no write beyond the inboxes |
 | `tests/validate.test.sh` | `POST /validate` |
 | `tests/match.test.sh` | `--match` |
 | `tests/reference.test.sh` | the image reference of a feedback |

@@ -19,3 +19,5 @@ Edges: the checks need the handler. Sort: 1. bin/review_window.py, 2. tests/revi
 | the cards shown | `Board` in bin/review/board.py | `/cards`, `/events`, `/image`, `/validate` | `Board.refresh`, unchanged |
 
 ## Amendments
+- The usage line reads `serve the routes` and the 403 error `Served to this machine's own clients only.`, since both named the page.
+- A check the page drove whose assertion reads the backend stays in tests/review-window.test.sh, driven through curl; a check of what the page showed or did goes.
