@@ -11,6 +11,7 @@ rm -rf "$app_path"
 mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources"
 cp "$bin_path/$product_name" "$app_path/Contents/MacOS/$product_name"
 cp -R "$bin_path/${product_name}_${product_name}.bundle" "$app_path/Contents/Resources/"
+cp /System/Library/Sounds/Blow.aiff "$app_path/Contents/Resources/"
 cat > "$app_path/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,4 +30,5 @@ cat > "$app_path/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+codesign --force --sign - "$app_path" >&2
 echo "$app_path"

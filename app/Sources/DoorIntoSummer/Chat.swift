@@ -7,6 +7,11 @@ enum Connection: Equatable, Sendable {
     case lost
 }
 
+struct Summons: Equatable {
+    let id = UUID()
+    let post: String
+}
+
 @MainActor
 @Observable
 final class Chat {
@@ -18,10 +23,12 @@ final class Chat {
     private(set) var filed: [String: String] = [:]
     private(set) var inspected: PostModel?
     private(set) var lastInspected: PostModel?
+    private(set) var summons: Summons?
     var tagging: String?
 
     private let server: ReviewServer
     private let skillsRoot: URL
+    @ObservationIgnored private var notifier: Notifier?
 
     init(server: ReviewServer = ReviewServer(), skillsRoot: URL = Commands.defaultRoot) {
         self.server = server
@@ -33,14 +40,25 @@ final class Chat {
     }
 
     func start() async {
+        notifier = notifier ?? Notifier { [weak self] session, attempt in
+            self?.summon(session: session, attempt: attempt)
+        }
         for await event in server.events() {
             if case .lost = event {
                 connection = .lost
             } else {
-                thread.apply(event)
+                for delivery in thread.apply(event) {
+                    notifier?.announce(delivery)
+                }
                 connection = .live
             }
         }
+    }
+
+    private func summon(session: String, attempt: Int) {
+        guard let post = thread.post(session: session, attempt: attempt) else { return }
+        thread.showPage(holding: post.id)
+        summons = Summons(post: post.id)
     }
 
     func load() async -> Bool {
