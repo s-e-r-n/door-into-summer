@@ -13,9 +13,10 @@ final class Chat {
     private(set) var cards: [Card] = []
     private(set) var connection = Connection.connecting
     private(set) var pending: [Pending] = []
-    private(set) var sentAt: [SaidKey: Date] = [:]
     private(set) var commands: [Command] = []
     private(set) var validated: Set<String> = []
+    private(set) var attached: ShownReference?
+    private(set) var filed: [String: String] = [:]
     var inspected: Post?
     private(set) var lastInspected: Post?
     var tagging: String?
@@ -29,7 +30,7 @@ final class Chat {
     }
 
     var messages: [Message] {
-        DoorIntoSummer.messages(of: cards, sentAt: sentAt, pending: pending, validated: validated)
+        DoorIntoSummer.messages(of: cards, pending: pending, validated: validated)
     }
 
     var sessions: [LiveSession] {
@@ -46,10 +47,11 @@ final class Chat {
             case .cards(let cards):
                 self.cards = cards
                 connection = .live
-                let known = Set(cards.flatMap { card in card.conversation.map { SaidKey(session: card.session, number: $0.number) } })
-                pending.removeAll { sent in sent.number.map { known.contains(SaidKey(session: sent.session, number: $0)) } ?? false }
+                let known = Set(cards.flatMap { card in card.conversation.map { "\(card.session)#\($0.number)" } })
+                pending.removeAll { sent in sent.number.map { known.contains("\(sent.session)#\($0)") } ?? false }
                 if let inspected, let shown = messages.lazy.compactMap({ if case .post(let post) = $0 { post } else { nil } }).first(where: { $0.id == inspected.id }) {
                     self.inspected = shown
+                    lastInspected = shown
                 }
             case .lost:
                 connection = .lost
@@ -72,20 +74,21 @@ final class Chat {
         if let unknown = instructions.first(where: { attempts[$0.session] == nil }) {
             return "No live session is named @\(unknown.session)."
         }
+        let reference = attached.map { Reference(job: $0.job, url: $0.url) }
         var refusals: [String] = []
         for instruction in instructions {
             let attempt = attempts[instruction.session] ?? 0
-            let placed = Pending(id: UUID(), session: instruction.session, attempt: attempt, text: instruction.text, at: .now, number: nil)
+            let placed = Pending(id: UUID(), session: instruction.session, attempt: attempt, text: instruction.text, reference: reference, at: .now, number: nil)
             pending.append(placed)
-            switch await server.send(Feedback(session: instruction.session, attempt: attempt, text: instruction.text)) {
+            switch await server.send(Feedback(session: instruction.session, attempt: attempt, text: instruction.text, reference: reference)) {
             case .sent(let number):
-                sentAt[SaidKey(session: instruction.session, number: number)] = placed.at
                 if let index = pending.firstIndex(where: { $0.id == placed.id }) {
                     pending[index].number = number
                 }
                 if cards.contains(where: { $0.session == instruction.session && $0.conversation.contains { $0.number == number } }) {
                     pending.removeAll { $0.id == placed.id }
                 }
+                attached = nil
             case .refused(let reason):
                 pending.removeAll { $0.id == placed.id }
                 refusals.append("@\(instruction.session): \(reason)")
@@ -95,11 +98,27 @@ final class Chat {
     }
 
     func validate(_ post: Post) async -> String? {
-        let refusal = await server.validate(Validation(session: post.session, attempt: post.attempt))
-        if refusal == nil {
+        switch await server.validate(Validation(session: post.session, attempt: post.attempt)) {
+        case .filed(let file):
             validated.insert(post.id)
+            filed[post.id] = file
+            return nil
+        case .refused(let reason):
+            return reason
         }
-        return refusal
+    }
+
+    func attach(_ post: Post) {
+        guard let job = post.job else { return }
+        attached = ShownReference(job: job.id, url: post.generation.url, session: post.session, attempt: post.attempt)
+    }
+
+    func attach(_ reference: Reference) {
+        attached = shown(reference, in: cards)
+    }
+
+    func detach() {
+        attached = nil
     }
 
     func inspect(_ post: Post?) {

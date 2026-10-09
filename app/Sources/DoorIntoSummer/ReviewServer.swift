@@ -22,41 +22,19 @@ struct Picture: Equatable, Hashable, Sendable, Decodable {
 }
 
 struct Job: Equatable, Hashable, Sendable, Decodable {
+    let id: String
     let model: String?
     let aspect: String?
     let quality: String?
     let batch: Int?
+    let resolution: String?
+    let size: String?
+    let mode: String?
     let prompt: String?
-    let id: String?
-    let parameters: [String: String]
+    let createdAt: String?
 
-    private struct Key: CodingKey {
-        let stringValue: String
-        var intValue: Int? { nil }
-        init(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { nil }
-    }
-
-    static let namedKeys = ["model", "aspect", "quality", "batch", "prompt", "id"]
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: Key.self)
-        let string = { (name: String) in try container.decodeIfPresent(String.self, forKey: Key(stringValue: name)) }
-        model = try string("model")
-        aspect = try string("aspect")
-        quality = try string("quality")
-        batch = try container.decodeIfPresent(Int.self, forKey: Key(stringValue: "batch"))
-        prompt = try string("prompt")
-        id = try string("id")
-        var others: [String: String] = [:]
-        for key in container.allKeys where !Self.namedKeys.contains(key.stringValue) {
-            if let value = try? container.decode(String.self, forKey: key) {
-                others[key.stringValue] = value
-            } else if let value = try? container.decode(Int.self, forKey: key) {
-                others[key.stringValue] = String(value)
-            }
-        }
-        parameters = others
+    private enum CodingKeys: String, CodingKey {
+        case id, model, aspect, quality, batch, resolution, size, mode, prompt, createdAt = "created_at"
     }
 
     var ratio: Ratio? { aspect.flatMap(Ratio.init) }
@@ -79,23 +57,34 @@ struct Working: Equatable, Hashable, Sendable, Decodable {
     }
 }
 
+struct Reference: Equatable, Hashable, Sendable, Codable {
+    let job: String
+    let url: URL
+}
+
 enum TickState: String, Equatable, Hashable, Sendable, Decodable {
     case delivered
     case read
 }
 
-struct Said: Equatable, Hashable, Sendable {
+struct Said: Equatable, Hashable, Sendable, Decodable {
     let number: Int
     let attempt: Int
     let text: String
     let state: TickState
-    let sentAt: Date?
+    let sentAt: Date
+    let reference: Reference?
+
+    private enum CodingKeys: String, CodingKey {
+        case number, attempt, text, state, sentAt = "sent_at", reference
+    }
 }
 
 struct Card: Equatable, Hashable, Sendable, Decodable {
     let session: String
     let subject: String
     let attempt: Int
+    let at: Date
     let original: Picture?
     let generation: Picture
     let conversation: [Said]
@@ -103,12 +92,14 @@ struct Card: Equatable, Hashable, Sendable, Decodable {
     let working: Working?
     let validated: Bool
 
+    static let reviewer = "reviewer"
+
     private enum CodingKeys: String, CodingKey {
-        case session, subject, attempt, original, generation, conversation, job, working, validated
+        case session, subject, attempt, at, original, generation, conversation, job, working, validated
     }
 
     private enum ItemKeys: String, CodingKey {
-        case from, number, attempt, text, state, sentAt = "sent_at"
+        case from
     }
 
     init(from decoder: Decoder) throws {
@@ -116,21 +107,22 @@ struct Card: Equatable, Hashable, Sendable, Decodable {
         session = try container.decode(String.self, forKey: .session)
         subject = try container.decode(String.self, forKey: .subject)
         attempt = try container.decode(Int.self, forKey: .attempt)
+        at = try container.decode(Date.self, forKey: .at)
         original = try container.decodeIfPresent(Picture.self, forKey: .original)
         generation = try container.decode(Picture.self, forKey: .generation)
         job = try container.decodeIfPresent(Job.self, forKey: .job)
         working = try container.decodeIfPresent(Working.self, forKey: .working)
-        validated = try container.decodeIfPresent(Bool.self, forKey: .validated) ?? false
+        validated = try container.decode(Bool.self, forKey: .validated)
         var said: [Said] = []
         var items = try container.nestedUnkeyedContainer(forKey: .conversation)
         while !items.isAtEnd {
-            let item = try items.nestedContainer(keyedBy: ItemKeys.self)
-            guard try item.decode(String.self, forKey: .from) == "gray" else { continue }
-            said.append(Said(number: try item.decode(Int.self, forKey: .number),
-                             attempt: try item.decode(Int.self, forKey: .attempt),
-                             text: try item.decode(String.self, forKey: .text),
-                             state: try item.decode(TickState.self, forKey: .state),
-                             sentAt: try item.decodeIfPresent(Date.self, forKey: .sentAt)))
+            var peek = items
+            let from = try peek.nestedContainer(keyedBy: ItemKeys.self).decode(String.self, forKey: .from)
+            if from == Self.reviewer {
+                said.append(try items.decode(Said.self))
+            } else {
+                _ = try items.nestedContainer(keyedBy: ItemKeys.self)
+            }
         }
         conversation = said
     }
@@ -144,6 +136,7 @@ struct Feedback: Equatable, Sendable, Encodable {
     let session: String
     let attempt: Int
     let text: String
+    let reference: Reference?
 }
 
 struct Validation: Equatable, Sendable, Encodable {
@@ -158,6 +151,11 @@ enum Board: Sendable {
 
 enum Sent: Equatable, Sendable {
     case sent(Int)
+    case refused(String)
+}
+
+enum Filed: Equatable, Sendable {
+    case filed(String)
     case refused(String)
 }
 
@@ -233,9 +231,12 @@ struct ReviewServer: Sendable {
         return .refused(refusal(status, payload))
     }
 
-    func validate(_ validation: Validation) async -> String? {
+    func validate(_ validation: Validation) async -> Filed {
         let (status, payload) = await posted(validation, to: "validate")
-        return status == 200 ? nil : refusal(status, payload)
+        if status == 200, let file = payload?["file"] as? String {
+            return .filed(file)
+        }
+        return .refused(refusal(status, payload))
     }
 
     private func posted(_ body: some Encodable, to route: String) async -> (Int?, [String: Any]?) {

@@ -60,10 +60,19 @@ struct ChatBar: View {
     }
 
     private var field: some View {
-        TextField("", text: $text, selection: $selection)
-            .textFieldStyle(.plain)
-            .foregroundStyle(Color.foreground)
-            .focused($focused)
+        HStack(spacing: 12) {
+            if let attached = chat.attached {
+                HStack(spacing: 8) {
+                    ReferenceLine(reference: attached, thumbnail: 20)
+                    Button("×") { chat.detach() }.buttonStyle(.plain).foregroundStyle(Color.tertiaryText)
+                }
+                .frame(maxWidth: Layout.barWidth / 2, alignment: .leading)
+            }
+            TextField("", text: $text, selection: $selection)
+                .textFieldStyle(.plain)
+                .foregroundStyle(Color.foreground)
+                .focused($focused)
+        }
             .padding(.horizontal, Layout.barInset)
             .frame(maxWidth: Layout.barWidth)
             .frame(height: Layout.barHeight)
