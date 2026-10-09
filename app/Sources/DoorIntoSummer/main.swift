@@ -1,68 +1,135 @@
 import CoreText
 import Foundation
 
+enum Form {
+    static let send = "<server url> <message> [<reference>]"
+    static let cards = "<server url>"
+    static let validate = "<server url> <session> <attempt>"
+    static let events = "<server url> [<frames>]"
+}
+
 let usage = """
 Usage:
   DoorIntoSummer                                             open the chat on the review server at 127.0.0.1:8765
-  DoorIntoSummer send <server url> <message> [<reference>]   send one message, one instruction per @session, with an image reference when a job and a url follow, or a session and an attempt whose post gives it, and print each message number
-  DoorIntoSummer cards <server url>                          print the cards the server serves, as the chat decodes them
-  DoorIntoSummer validate <server url> <session> <attempt>   file the image of that attempt through the server and print its file name
-  DoorIntoSummer events <server url> [<frames>]              follow the server's event stream as the chat does and print each frame, one by default
+  DoorIntoSummer send \(Form.send)   send one message, one instruction per @session, with an image reference when a job and a url follow, or a session and an attempt whose post gives it, and print each message number
+  DoorIntoSummer cards \(Form.cards)                          print the cards the server serves, as the chat decodes them
+  DoorIntoSummer validate \(Form.validate)   file the image of that attempt through the server and print its file name
+  DoorIntoSummer events \(Form.events)              follow the server's event stream as the chat does and print each frame, one by default
 """
+
+enum Outcome {
+    case succeeded(String)
+    case failed(String)
+    case misused(String)
+    case malformed(String)
+}
+
+func printed(_ outcome: Outcome) -> Int32 {
+    switch outcome {
+    case .succeeded(let line):
+        print(line)
+        return 0
+    case .failed(let line):
+        printError(line)
+        return 1
+    case .misused(let line):
+        printError("\(line)\n\(usage)")
+        return 2
+    case .malformed(let line):
+        printError(line)
+        return 2
+    }
+}
+
+private func printError(_ text: String) {
+    FileHandle.standardError.write(Data("\(text)\n".utf8))
+}
 
 private let iso = Date.ISO8601FormatStyle()
 
-@MainActor
-func loaded(_ address: String) async -> Chat? {
-    guard let url = URL(string: address) else {
-        print("No URL in \(address).")
-        return nil
+private func httpURL(_ text: String) -> URL? {
+    guard let url = URL(string: text), ["http", "https"].contains(url.scheme?.lowercased()), url.host() != nil else { return nil }
+    return url
+}
+
+private func serverAnswers(at url: URL) async -> Bool {
+    do {
+        _ = try await ReviewServer(address: url).cards()
+        return true
+    } catch is URLError {
+        return false
+    } catch {
+        return true
     }
-    let chat = Chat(server: ReviewServer(address: url))
-    guard await chat.load() else {
-        print(ReviewServer.unanswered)
-        return nil
-    }
-    return chat
+}
+
+private func unanswered(_ url: URL) -> String {
+    "the review server does not answer at \(url.absoluteString)"
 }
 
 @MainActor
-func sent(_ arguments: [String]) async -> Int32 {
-    guard arguments.count == 2 || arguments.count == 4, let chat = await loaded(arguments[0]) else { return 1 }
-    if arguments.count == 4, let attempt = Int(arguments[3]) {
-        guard let post = post(of: arguments[2], attempt: attempt, in: chat), post.job != nil else {
-            print("No card shows @\(arguments[2]) image generation \(attempt) with a job.")
-            return 1
+func loaded(_ url: URL) async -> Chat? {
+    let chat = Chat(server: ReviewServer(address: url))
+    return await chat.load() ? chat : nil
+}
+
+private func loadFailure(at url: URL) async -> Outcome {
+    await serverAnswers(at: url)
+        ? .failed("the review server at \(url.absoluteString) answers no cards the chat can read")
+        : .failed(unanswered(url))
+}
+
+private func refused(_ refusal: String, at url: URL) -> Outcome {
+    .failed(refusal.contains(ReviewServer.unanswered) ? unanswered(url) : "refused: \(refusal)")
+}
+
+@MainActor
+func sent(_ arguments: [String]) async -> Outcome {
+    guard arguments.count == 2 || arguments.count == 4 else {
+        return .misused("send expects \(Form.send), got \(arguments.count) arguments")
+    }
+    guard let url = httpURL(arguments[0]) else { return .malformed("not a server url: \(arguments[0])") }
+    let attempt = arguments.count == 4 ? Int(arguments[3]) : nil
+    let image = arguments.count == 4 ? httpURL(arguments[3]) : nil
+    if arguments.count == 4, attempt == nil, image == nil {
+        return .malformed("not an image url: \(arguments[3])")
+    }
+    guard let chat = await loaded(url) else { return await loadFailure(at: url) }
+    if let attempt {
+        guard let post = post(of: arguments[2], attempt: attempt, in: chat) else {
+            return .failed("no image generation \(attempt) of @\(arguments[2]) on the server")
+        }
+        guard post.job != nil else {
+            return .failed("no job for image generation \(attempt) of @\(arguments[2]) on the server")
         }
         chat.attach(post)
-    } else if arguments.count == 4 {
-        guard let url = URL(string: arguments[3]) else {
-            print("No URL in \(arguments[3]).")
-            return 2
-        }
-        chat.attach(Reference(job: arguments[2], url: url))
+    } else if let image {
+        chat.attach(Reference(job: arguments[2], url: image))
     }
     let refusal = await chat.send(arguments[1])
     for placed in chat.pending {
         print("@\(placed.session) attempt \(placed.attempt) message \(placed.number.map(String.init) ?? "refused"): \(placed.text)\(placed.reference.map { " reference \($0.job) \($0.url.absoluteString)" } ?? "")")
     }
     if let refusal {
-        print(refusal)
-        return 1
+        return refused(refusal, at: url)
     }
-    return 0
+    return .succeeded("sent: \(chat.pending.count) messages")
 }
 
 @MainActor
-func listed(_ arguments: [String]) async -> Int32 {
-    guard arguments.count == 1, let chat = await loaded(arguments[0]) else { return 1 }
+func listed(_ arguments: [String]) async -> Outcome {
+    guard arguments.count == 1 else {
+        return .misused("cards expects \(Form.cards), got \(arguments.count) arguments")
+    }
+    guard let url = httpURL(arguments[0]) else { return .malformed("not a server url: \(arguments[0])") }
+    guard let chat = await loaded(url) else { return await loadFailure(at: url) }
     for card in chat.cards {
         print("session \(card.session) attempt \(card.attempt) at \(card.at.formatted(iso)) job \(card.job?.model ?? "unavailable") working \(card.working?.ratio.label ?? "none") validated \(card.validated)")
         for spoken in card.conversation {
             print(line(of: spoken))
         }
     }
-    return 0
+    return .succeeded("listed: \(chat.cards.count) sessions")
 }
 
 private func line(of spoken: Spoken) -> String {
@@ -80,37 +147,41 @@ private func post(of session: String, attempt: Int, in chat: Chat) -> Post? {
 }
 
 @MainActor
-func validated(_ arguments: [String]) async -> Int32 {
-    guard arguments.count == 3, let attempt = Int(arguments[2]), let chat = await loaded(arguments[0]) else { return 1 }
+func validated(_ arguments: [String]) async -> Outcome {
+    guard arguments.count == 3 else {
+        return .misused("validate expects \(Form.validate), got \(arguments.count) arguments")
+    }
+    guard let url = httpURL(arguments[0]) else { return .malformed("not a server url: \(arguments[0])") }
+    guard let attempt = Int(arguments[2]) else { return .malformed("not an attempt number: \(arguments[2])") }
+    guard let chat = await loaded(url) else { return await loadFailure(at: url) }
     guard let post = post(of: arguments[1], attempt: attempt, in: chat) else {
-        print("No card shows @\(arguments[1]) image generation \(arguments[2]).")
-        return 1
+        return .failed("no image generation \(attempt) of @\(arguments[1]) on the server")
     }
     if let refusal = await chat.validate(post) {
-        print("refused: \(refusal)")
-        return 1
+        return refused(refusal, at: url)
     }
-    print("filed: \(chat.filed[post.id] ?? "")")
-    return 0
+    return .succeeded("filed: \(chat.filed[post.id] ?? "")")
 }
 
 @MainActor
-func followed(_ arguments: [String]) async -> Int32 {
-    guard arguments.count == 1 || arguments.count == 2, let url = URL(string: arguments[0]) else {
-        print(usage)
-        return 2
+func followed(_ arguments: [String]) async -> Outcome {
+    guard arguments.count == 1 || arguments.count == 2 else {
+        return .misused("events expects \(Form.events), got \(arguments.count) arguments")
     }
-    let wanted = arguments.count == 2 ? Int(arguments[1]) ?? 1 : 1
+    guard let url = httpURL(arguments[0]) else { return .malformed("not a server url: \(arguments[0])") }
+    let frames = arguments.count == 2 ? arguments[1] : "1"
+    guard let wanted = Int(frames), wanted > 0 else { return .malformed("not a frame count: \(frames)") }
     var seen = 0
     for await board in ReviewServer(address: url).boards() {
-        switch board {
-        case .cards(let cards): print("cards: \(cards.map { "\($0.session) attempt \($0.attempt)" }.joined(separator: ", "))")
-        case .lost: print("lost")
-        }
+        guard case .cards(let cards) = board else { break }
+        print("cards: \(cards.map { "\($0.session) attempt \($0.attempt)" }.joined(separator: ", "))")
         seen += 1
-        if seen >= wanted { return 0 }
+        if seen == wanted { return .succeeded("followed: \(seen) frames") }
     }
-    return 1
+    if seen == 0, !(await serverAnswers(at: url)) {
+        return .failed(unanswered(url))
+    }
+    return .failed("the event stream ended after \(seen) of \(wanted) frames")
 }
 
 func registeredFonts() {
@@ -121,19 +192,18 @@ func registeredFonts() {
 let arguments = Array(CommandLine.arguments.dropFirst())
 switch arguments.first {
 case "send":
-    exit(await sent(Array(arguments.dropFirst())))
+    exit(printed(await sent(Array(arguments.dropFirst()))))
 case "cards":
-    exit(await listed(Array(arguments.dropFirst())))
+    exit(printed(await listed(Array(arguments.dropFirst()))))
 case "validate":
-    exit(await validated(Array(arguments.dropFirst())))
+    exit(printed(await validated(Array(arguments.dropFirst()))))
 case "events":
-    exit(await followed(Array(arguments.dropFirst())))
+    exit(printed(await followed(Array(arguments.dropFirst()))))
 case "--help":
     print(usage)
     exit(0)
-case .some:
-    print(usage)
-    exit(2)
+case .some(let command):
+    exit(printed(.misused("unknown command: \(command)")))
 case nil:
     registeredFonts()
     DoorIntoSummerApp.main()
