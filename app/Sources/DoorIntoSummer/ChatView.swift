@@ -29,8 +29,8 @@ struct ChatView: View {
 
     @ViewBuilder private var panel: some View {
         Group {
-            if let post = chat.lastInspected {
-                MetadataPanel(post: post)
+            if open, let post = chat.lastInspected {
+                MetadataPanel(post: post).transition(.identity)
             } else {
                 Color.desk
             }
