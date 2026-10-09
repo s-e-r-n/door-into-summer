@@ -50,6 +50,7 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
    exit 2   unreadable: <path>: <reason>, on stderr
    ```
 6. Help: `Door into Summer Help`, the one item of the Help menu, opens a short guide: how the chat works, then each command and shortcut of the chat.
+7. Notifications: each generation a session delivers, its first included, shows one macOS notification, `@<session>` over its subject and `image generation <n>`, with the Blow sound, while the app is not frontmost. A click brings the app forward on that post. macOS asks to allow them the first time the chat opens.
 
 ## Reference
 
@@ -267,7 +268,7 @@ reference: <job id> <image url>
 | Repository path | Holds |
 | --- | --- |
 | `bin/review_window.py` | the backend |
-| `app/scripts/make_app.sh` | builds `app/.build/Door into Summer.app` |
+| `app/scripts/make_app.sh` | builds `app/.build/Door into Summer.app`, signed ad hoc, with /System/Library/Sounds/Blow.aiff copied into its Resources |
 | `app/.build/debug/DoorIntoSummer` | the app's command line, built by `swift build --package-path app` |
 | `app/Sources/DoorIntoSummer/Fonts` | JetBrains Mono Thin and Thin Italic, with their OFL license |
 | `app/Tests/` | `swift test --package-path app`: the message parser |

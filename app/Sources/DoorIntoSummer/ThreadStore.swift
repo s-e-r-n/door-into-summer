@@ -1,6 +1,12 @@
 import Foundation
 import Observation
 
+struct Delivery: Equatable, Sendable {
+    let session: String
+    let subject: String
+    let attempt: Int
+}
+
 protocol Settled: AnyObject {}
 
 extension Settled {
@@ -188,12 +194,25 @@ final class ThreadStore {
         }
     }
 
-    func apply(_ event: ServerEvent) {
+    func showPage(holding id: String) {
+        guard let index = ids.firstIndex(of: id) else { return }
+        let posts = ids[index...].count { if case .post? = models[$0] { true } else { false } }
+        let pages = (posts - 1) / Self.postsPerPage
+        if pages > earlierPages {
+            earlierPages = pages
+        }
+    }
+
+    @discardableResult
+    func apply(_ event: ServerEvent) -> Delivery? {
+        var delivery: Delivery?
         switch event {
         case .ready(let listed):
             cards = listed
         case .sessionUpdate(let card):
-            if let index = cards.firstIndex(where: { $0.session == card.session }) {
+            let index = cards.firstIndex { $0.session == card.session }
+            delivery = delivered(from: index.map { cards[$0] }, to: card)
+            if let index {
                 cards[index] = card
             } else {
                 cards.insert(card, at: 0)
@@ -201,11 +220,17 @@ final class ThreadStore {
         case .sessionDelete(let session):
             cards.removeAll { $0.session == session }
         case .lost:
-            return
+            return nil
         }
         let known = Set(cards.flatMap { card in card.feedbacks.map { "\(card.session)#\($0.number)" } })
         pending.removeAll { sent in sent.number.map { known.contains("\(sent.session)#\($0)") } ?? false }
         reconcile()
+        return delivery
+    }
+
+    private func delivered(from held: Card?, to card: Card) -> Delivery? {
+        let generated = held.map { $0.working != nil && card.attempt > $0.attempt } ?? true
+        return generated ? Delivery(session: card.session, subject: card.subject, attempt: card.attempt) : nil
     }
 
     func place(_ sent: Pending) {

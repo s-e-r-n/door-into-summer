@@ -57,6 +57,11 @@ struct ChatView: View {
         .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { before, now in
             paged(from: before, to: now)
         }
+        .onChange(of: chat.summons) { _, summons in
+            if let summons {
+                position.scrollTo(id: summons.post, anchor: .top)
+            }
+        }
     }
 
     private func paged(from before: ScrollGeometry, to now: ScrollGeometry) {
