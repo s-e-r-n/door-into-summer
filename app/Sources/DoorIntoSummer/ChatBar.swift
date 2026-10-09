@@ -76,7 +76,7 @@ struct ChatBar: View {
             .padding(.horizontal, Layout.barInset)
             .frame(maxWidth: Layout.barWidth)
             .frame(height: Layout.barHeight)
-            .glassEffect(.regular, in: Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
             .padding(.horizontal, Layout.horizontalPadding)
             .onSubmit { send() }
             .onKeyPress(.upArrow) { move(-1) }
