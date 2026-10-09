@@ -138,13 +138,50 @@ enum RowModel {
 @MainActor
 @Observable
 final class ThreadStore {
+    static let postsPerPage = 5
+
     private(set) var ids: [String] = []
+    private(set) var earlierPages = 0
     private(set) var sessions: [LiveSession] = []
     @ObservationIgnored private(set) var models: [String: RowModel] = [:]
     @ObservationIgnored private(set) var cards: [Card] = []
     @ObservationIgnored private(set) var pending: [Pending] = []
     @ObservationIgnored private var validatedIDs: Set<String> = []
     @ObservationIgnored private var inspectedID: String?
+
+    var shownIDs: ArraySlice<String> {
+        ids[pageStart...]
+    }
+
+    private var pageStart: Int {
+        let wanted = Self.postsPerPage * (earlierPages + 1)
+        var posts = 0
+        for index in ids.indices.reversed() {
+            if case .post? = models[ids[index]] {
+                posts += 1
+            }
+            if posts == wanted {
+                return index
+            }
+        }
+        return 0
+    }
+
+    var hasEarlierPage: Bool {
+        pageStart > 0
+    }
+
+    func showEarlierPage() {
+        if hasEarlierPage {
+            earlierPages += 1
+        }
+    }
+
+    func showLastPage() {
+        if earlierPages != 0 {
+            earlierPages = 0
+        }
+    }
 
     func apply(_ cards: [Card]) {
         self.cards = cards
