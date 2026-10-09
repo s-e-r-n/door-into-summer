@@ -115,7 +115,7 @@ final class Chat {
         tagging = session
     }
 
-    func refreshCommands() {
-        commands = Commands.commands(in: skillsRoot)
+    func refreshCommands() async {
+        commands = await Commands.commands(in: skillsRoot)
     }
 }
