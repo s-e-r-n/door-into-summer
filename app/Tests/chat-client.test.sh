@@ -206,6 +206,7 @@ expect "wrong number of arguments: cards" "$(outcome cards)" "2 stderr cards exp
 expect "wrong number of arguments: validate" "$(outcome validate "$url" a)" "2 stderr validate expects <server url> <session> <attempt>, got 2 arguments, then the usage"
 expect "wrong number of arguments: events" "$(outcome events "$url" 1 2)" "2 stderr events expects <server url> [<frames>], got 3 arguments, then the usage"
 expect "server url that does not parse" "$(outcome cards nowhere)" "2 stderr not a server url: nowhere"
+expect "server url that does not parse: the chat's, in DOOR_INTO_SUMMER_SERVER" "$(DOOR_INTO_SUMMER_SERVER=nowhere outcome)" "2 stderr not a server url: nowhere"
 expect "image url that does not parse" "$(outcome send "$url" "@b x" "$job_id" picture.png)" "2 stderr not an image url: picture.png"
 expect "attempt that is not a number" "$(outcome validate "$url" a first)" "2 stderr not an attempt number: first"
 expect "frame count that is not a number" "$(outcome events "$url" all)" "2 stderr not a frame count: all"

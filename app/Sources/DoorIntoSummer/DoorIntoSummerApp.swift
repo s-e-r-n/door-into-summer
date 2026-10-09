@@ -2,7 +2,8 @@ import NativeWindow
 import SwiftUI
 
 struct DoorIntoSummerApp: App {
-    @State private var chat = Chat()
+    static var address = ReviewServer.defaultAddress
+    @State private var chat = Chat(server: ReviewServer(address: address))
 
     var body: some Scene {
         window {

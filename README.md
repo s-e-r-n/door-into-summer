@@ -35,6 +35,7 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
 1. Start the backend: `python3 bin/review_window.py`. It prints `serving: http://127.0.0.1:8765/`, the address the app reads. On a startup check line, go back to Set up step 3.
 2. Build the app: `app/scripts/make_app.sh`.
 3. Open the app: `open "app/.build/Door into Summer.app"`.
+4. To open it on a backend served at another address, name it in `DOOR_INTO_SUMMER_SERVER`, read once at launch: `open --env DOOR_INTO_SUMMER_SERVER=http://127.0.0.1:<port>/ "app/.build/Door into Summer.app"`.
 
 ## Use
 
@@ -95,7 +96,7 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 ### Command line
 
 ```
-app/.build/debug/DoorIntoSummer                           opens the chat on the review server at 127.0.0.1:8765
+app/.build/debug/DoorIntoSummer                           opens the chat on the review server at 127.0.0.1:8765, or at the url in DOOR_INTO_SUMMER_SERVER
 app/.build/debug/DoorIntoSummer --help                    prints the usage
 app/.build/debug/DoorIntoSummer <command> <arguments>     prints one line saying what happened, then exits 0, 1 or 2
 ```
@@ -104,7 +105,7 @@ app/.build/debug/DoorIntoSummer <command> <arguments>     prints one line saying
 | --- | --- | --- | --- |
 | unknown command | `unknown command: <command>`, then the usage | stderr | 2 |
 | wrong number of arguments | `<command> expects <its arguments as the usage writes them>, got <n> arguments`, then the usage | stderr | 2 |
-| server URL that is not an http or https URL with a host | `not a server url: <text>` | stderr | 2 |
+| server URL, as an argument or in `DOOR_INTO_SUMMER_SERVER`, that is not an http or https URL with a host | `not a server url: <text>` | stderr | 2 |
 | last argument of `send` that is neither an attempt number nor an http or https URL with a host | `not an image url: <text>` | stderr | 2 |
 | attempt of `validate` that is not a number | `not an attempt number: <text>` | stderr | 2 |
 | frame count of `events` that is not a number above 0 | `not a frame count: <text>` | stderr | 2 |

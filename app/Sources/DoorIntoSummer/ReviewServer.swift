@@ -223,6 +223,7 @@ struct Frame {
 
 struct ReviewServer: Sendable {
     static let defaultAddress = URL(string: "http://127.0.0.1:8765/")!
+    static let addressVariable = "DOOR_INTO_SUMMER_SERVER"
     static let unanswered = "The review server does not answer."
 
     let address: URL

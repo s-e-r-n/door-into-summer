@@ -10,7 +10,7 @@ enum Form {
 
 let usage = """
 Usage:
-  DoorIntoSummer                                             open the chat on the review server at 127.0.0.1:8765
+  DoorIntoSummer                                             open the chat on the review server at 127.0.0.1:8765, or at the url in DOOR_INTO_SUMMER_SERVER
   DoorIntoSummer send \(Form.send)   send one message, one instruction per @session, with an image reference when a job and a url follow, or a session and an attempt whose post gives it, and print each message number
   DoorIntoSummer cards \(Form.cards)                          print the cards the server serves, as the chat decodes them
   DoorIntoSummer validate \(Form.validate)   file the image of that attempt through the server and print its file name
@@ -205,6 +205,10 @@ case "--help":
 case .some(let command):
     exit(printed(.misused("unknown command: \(command)")))
 case nil:
+    if let named = ProcessInfo.processInfo.environment[ReviewServer.addressVariable] {
+        guard let address = httpURL(named) else { exit(printed(.malformed("not a server url: \(named)"))) }
+        DoorIntoSummerApp.address = address
+    }
     registeredFonts()
     DoorIntoSummerApp.main()
 }
