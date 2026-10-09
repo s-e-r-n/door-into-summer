@@ -34,7 +34,7 @@ struct ChatBar: View {
             }
             field
             if let refusal {
-                Text(refusal).foregroundStyle(Color.alert).padding(.top, 6)
+                Text(refusal).foregroundStyle(Color.alert).textSelection(.enabled).padding(.top, 6)
             }
         }
         .padding(.bottom, 20)

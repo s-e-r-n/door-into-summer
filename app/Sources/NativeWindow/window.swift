@@ -16,7 +16,7 @@ public struct window<content_view: View>: Scene {
         .preferredColorScheme(.dark)
     }
     .windowStyle(.hiddenTitleBar)
-    .windowBackgroundDragBehavior(.enabled)
+    .windowBackgroundDragBehavior(.disabled)
     .defaultWindowPlacement { _, context in
       let screen = context.defaultDisplay.visibleRect
       let size = CGSize(width: (screen.width * 2 / 3).rounded(), height: screen.height)
