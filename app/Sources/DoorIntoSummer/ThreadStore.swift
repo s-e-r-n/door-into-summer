@@ -18,7 +18,7 @@ final class PostModel: Identifiable, Settled {
     let session: String
     let attempt: Int
     private(set) var subject: String
-    private(set) var at: Date?
+    private(set) var stamp: String
     private(set) var original: Picture?
     private(set) var generation: Picture?
     private(set) var job: Job?
@@ -30,7 +30,7 @@ final class PostModel: Identifiable, Settled {
         session = post.session
         attempt = post.attempt
         subject = post.subject
-        at = post.at
+        stamp = shownTime(of: post.at)
         original = post.original
         generation = post.generation
         job = post.job
@@ -39,7 +39,7 @@ final class PostModel: Identifiable, Settled {
 
     fileprivate func update(from post: Post) {
         update(\.subject, to: post.subject)
-        update(\.at, to: post.at)
+        update(\.stamp, to: shownTime(of: post.at))
         update(\.original, to: post.original)
         update(\.generation, to: post.generation)
         update(\.job, to: post.job)
@@ -57,25 +57,30 @@ final class ReviewerModel: Identifiable, Settled {
     let id: String
     let session: String
     let attempt: Int
-    private(set) var text: String
+    private(set) var text: AttributedString
     private(set) var mark: TickMark
-    private(set) var at: Date
+    private(set) var stamp: String
     private(set) var reference: ShownReference?
+    @ObservationIgnored private var plain: String
 
     init(_ message: ReviewerMessage) {
         id = message.id
         session = message.session
         attempt = message.attempt
-        text = message.text
+        plain = message.text
+        text = styled(message.text)
         mark = message.mark
-        at = message.at
+        stamp = shownTime(of: message.at)
         reference = message.reference
     }
 
     fileprivate func update(from message: ReviewerMessage) {
-        update(\.text, to: message.text)
+        if plain != message.text {
+            plain = message.text
+            text = styled(message.text)
+        }
         update(\.mark, to: message.mark)
-        update(\.at, to: message.at)
+        update(\.stamp, to: shownTime(of: message.at))
         update(\.reference, to: message.reference)
     }
 }

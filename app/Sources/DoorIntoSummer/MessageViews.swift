@@ -1,13 +1,11 @@
 import AppKit
 import SwiftUI
 
-private let clock = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits)
-
 struct Stamp: View {
-    let at: Date?
+    let text: String
 
     var body: some View {
-        Text(at?.formatted(clock) ?? "time unavailable").monospacedDigit().foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+        Text(text).monospacedDigit().foregroundStyle(Color.tertiaryText).textSelection(.enabled)
     }
 }
 
@@ -98,10 +96,10 @@ struct ReviewerMessageView: View {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 Text("reviewer").font(.monoItalic).foregroundStyle(Color.white)
                 Spacer()
-                Stamp(at: message.at)
+                Stamp(text: message.stamp)
             }
             HStack(alignment: .firstTextBaseline, spacing: 0) {
-                styled(message.text)
+                Text(message.text)
                 Ticks(mark: message.mark)
             }
             if let reference = message.reference {
@@ -109,16 +107,6 @@ struct ReviewerMessageView: View {
             }
         }
         .textSelection(.enabled)
-    }
-
-    private func styled(_ text: String) -> Text {
-        runs(in: text).reduce(Text("")) { joined, run in
-            switch run.kind {
-            case .plain: Text("\(joined)\(run.text)")
-            case .mention: Text("\(joined)\(Text(run.text).font(.monoItalic).foregroundStyle(Color.mention))")
-            case .command: Text("\(joined)\(Text(run.text).foregroundStyle(Color.command))")
-            }
-        }
     }
 }
 
@@ -134,7 +122,7 @@ struct PostView: View {
                 SessionName(session: post.session) { chat.compose(tagging: $0) }
                 Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
                 Spacer()
-                Stamp(at: post.at)
+                Stamp(text: post.stamp)
             }
             SettingsLine(job: post.job)
             Text(post.subject).textSelection(.enabled)

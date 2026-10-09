@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 struct Pending: Equatable, Hashable, Identifiable, Sendable {
     let id: UUID
@@ -128,6 +128,27 @@ enum RunKind: Equatable, Sendable {
 struct Run: Equatable, Sendable {
     let kind: RunKind
     let text: String
+}
+
+private let clock = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits)
+
+func shownTime(of date: Date?) -> String {
+    date?.formatted(clock) ?? "time unavailable"
+}
+
+func styled(_ text: String) -> AttributedString {
+    runs(in: text).reduce(into: AttributedString()) { joined, run in
+        var piece = AttributedString(run.text)
+        switch run.kind {
+        case .plain: break
+        case .mention:
+            piece.font = .monoItalic
+            piece.foregroundColor = Color.mention
+        case .command:
+            piece.foregroundColor = Color.command
+        }
+        joined += piece
+    }
 }
 
 func runs(in text: String) -> [Run] {
