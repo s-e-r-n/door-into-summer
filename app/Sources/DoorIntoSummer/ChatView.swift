@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ChatView: View {
     let chat: Chat
+    @State private var position = ScrollPosition()
+    @State private var window = PageWindow()
 
     private var open: Bool { chat.inspected != nil }
 
@@ -39,8 +41,8 @@ struct ChatView: View {
 
     private var feed: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(chat.thread.ids, id: \.self) { id in
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(chat.thread.shownIDs, id: \.self) { id in
                     row(id)
                 }
                 status
@@ -48,8 +50,26 @@ struct ChatView: View {
             .padding(.top, 12)
         }
         .scrollIndicators(.hidden)
+        .scrollPosition($position)
         .defaultScrollAnchor(.bottom)
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { before, now in
+            paged(from: before, to: now)
+        }
+    }
+
+    private func paged(from before: ScrollGeometry, to now: ScrollGeometry) {
+        let thread = chat.thread
+        switch window.scrolled(from: before, to: now, hasEarlierPage: thread.hasEarlierPage, showsEarlierPages: thread.earlierPages > 0) {
+        case .showEarlierPage:
+            thread.showEarlierPage()
+        case .showLastPage:
+            thread.showLastPage()
+        case .scrollTo(let offset):
+            position.scrollTo(y: offset)
+        case nil:
+            break
+        }
     }
 
     @ViewBuilder private func row(_ id: String) -> some View {
