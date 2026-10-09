@@ -1,28 +1,29 @@
 import threading
+from collections.abc import Callable
 from dataclasses import replace
 
 from review import sessions, store
 from review.cards import Card, local_path, read_card, shown_attempt, shown_card
 from review.conversation import Answered, Said, conversation_of, shown as shown_item
-from review.jobs import shown_job
+from review.jobs import Reader
 
 keepalive_seconds = 15
 
 
-def job_fields(card: Card, filed: set[str]) -> dict:
-    job = shown_job(card.job) if card.job is not None else None
+def job_fields(card: Card, filed: set[str], job_of: Callable[[str], dict | None]) -> dict:
+    job = job_of(card.job) if card.job is not None else None
     validated = card.job is not None and store.job_key(card.job) in filed
     return ({} if job is None else {"job": job}) | {"validated": validated}
 
 
-def attempt_fields(name: str, item: Said | Answered, kept: dict[int, Card], filed: set[str]) -> dict:
+def attempt_fields(name: str, item: Said | Answered, kept: dict[int, Card], filed: set[str], job_of: Callable[[str], dict | None]) -> dict:
     card = kept.get(item.attempt) if isinstance(item, Answered) else None
-    return {} if card is None else shown_attempt(name, card) | job_fields(card, filed)
+    return {} if card is None else shown_attempt(name, card) | job_fields(card, filed, job_of)
 
 
-def shown(name: str, card: Card, kept: dict[int, Card], filed: set[str]) -> dict:
-    conversation = [shown_item(item) | attempt_fields(name, item, kept, filed) for item in conversation_of(name, kept)]
-    return shown_card(name, card) | job_fields(card, filed) | {"conversation": conversation}
+def shown(name: str, card: Card, kept: dict[int, Card], filed: set[str], job_of: Callable[[str], dict | None]) -> dict:
+    conversation = [shown_item(item) | attempt_fields(name, item, kept, filed, job_of) for item in conversation_of(name, kept)]
+    return shown_card(name, card) | job_fields(card, filed, job_of) | {"conversation": conversation}
 
 
 def events_between(sent: dict[str, dict], shown: dict[str, dict]) -> list[tuple[str, object]]:
@@ -39,6 +40,8 @@ def kept_card(previous: Card | None, card: Card) -> Card:
 class Board:
     def __init__(self):
         self.changed = threading.Condition()
+        self.refreshing = threading.Lock()
+        self.jobs = Reader(self.refresh)
         self.cards: dict[str, Card] = {}
         self.attempts: dict[str, dict[int, Card]] = {}
         self.filed: set[str] = set()
@@ -46,6 +49,10 @@ class Board:
         self.version = 0
 
     def refresh(self) -> None:
+        with self.refreshing:
+            self.read_board()
+
+    def read_board(self) -> None:
         try:
             filed = {store.job_key(job) for job in store.job_ids()}
         except OSError:
@@ -58,7 +65,7 @@ class Board:
                 kept = self.attempts.get(name, {})
                 cards[name] = card
                 attempts[name] = kept | {card.attempt: kept_card(kept.get(card.attempt), card)}
-        listed = {name: shown(name, card, attempts[name], filed) for name, card in cards.items()}
+        listed = {name: shown(name, card, attempts[name], filed, self.jobs.shown_job) for name, card in cards.items()}
         with self.changed:
             self.cards = cards
             self.attempts = attempts

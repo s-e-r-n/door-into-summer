@@ -124,7 +124,7 @@ for line in sys.stdin:
 }
 
 pushed_after() {
-  for _ in $(seq 100); do
+  while [ "$(($(now_ms) - $1))" -le "${3:-1500}" ]; do
     if pushed_board | jq -e "$2" >/dev/null 2>&1; then
       printf '%s' "$(($(now_ms) - $1))"
       return
@@ -191,7 +191,12 @@ if [ "$1 $2 $3" = "pane read ringing" ]; then
 fi
 exit 1
 STUB
-chmod +x "$root/stub/herdr"
+cat > "$root/stub/higgsfield" <<'STUB'
+#!/usr/bin/env bash
+sleep 3
+printf '{"id": "%s", "display_name": "Slow Model", "params": {"aspect_ratio": "1:1", "batch_size": 1, "quality": "medium", "prompt": "slow"}}\n' "$5"
+STUB
+chmod +x "$root/stub/herdr" "$root/stub/higgsfield"
 for image in mug-original mug-1 mug-2 mug-3 chair-1 lamp-1; do
   printf '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#%s"/></svg>\n' \
     "$(printf '%s' "$image" | md5 | cut -c1-6)" > "$root/images/$image.svg"
@@ -251,11 +256,20 @@ within "both are pushed in order, delivered" "$(pushed_after "$pressed" "$(said_
 expect "two messages, in order, neither read" "$(messages mug) $(conversation mug | jq -c 'map(select(type == "array") | .[1])')" \
   '2 ["delivered","delivered"]'
 
+live slow
+mkdir -p "$home/data/slow"
+jq -n --arg generation "$root/images/chair-1.svg" \
+  '{subject: "a slow one", attempt: 1, generation: {label: "generation 1", path: $generation}, job: "slow-job"}' > "$home/data/slow/images.json"
+sleep 0.3
 read_at="$(now_ms)"
 frames_before="$(wc -l < "$root/events" | tr -d ' ')"
 taken mug 001
-within "read is pushed once the session moves the message to handled/" "$(pushed_after "$read_at" "$(said_with mug 'read delivered')")" 1000
+within "read is pushed once the session moves the message to handled/, while slow's job read sleeps 3 s" "$(pushed_after "$read_at" "$(said_with mug 'read delivered')")" 1000
 expect "that one change is pushed as one session_update holding mug alone" "$(frames_after "$frames_before")" "session_update mug"
+within "slow's job fields arrive in their own session_update once read" "$(pushed_after "$read_at" '.[] | select(.session == "slow") | .job.id == "slow-job"' 4000)" 4000
+expect "slow's card went out at once without its job, then with it" "$(frames_after "$frames_before")" "session_update mug|session_update slow"
+rm -rf "$home/state/slow.meta" "$home/state/slow.inbox" "$home/data/slow"
+pushed_after "$(now_ms)" 'all(.[]; .session != "slow")' > /dev/null
 expect "the first feedback is read, the second still delivered" "$(conversation mug | jq -c 'map(select(type == "array") | .[1])')" \
   '["read","delivered"]'
 taken mug 002
