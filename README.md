@@ -186,6 +186,7 @@ reference: <job id> <image url>
 | app refusal | a message that does not open with `@session`, or names a session that is not live; it stays in the chat bar |
 | from a shell | `app/.build/debug/DoorIntoSummer send <server url> "@a instruction /option @b instruction" [<job> <image url>]` sends one message, with an image reference when a job and an image URL follow, and prints each session's message number |
 | read | the session moves it to `state/<name>.inbox/handled/` |
+| from a shell, more | `app/.build/debug/DoorIntoSummer cards <server url>` prints the cards as the app decodes them; `DoorIntoSummer validate <server url> <session> <attempt>` files one attempt and prints its file name; `DoorIntoSummer events <server url> [<frames>]` follows `/events` as the app does and prints each frame |
 
 ### Store line
 
