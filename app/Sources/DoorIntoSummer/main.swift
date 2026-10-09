@@ -4,7 +4,7 @@ import Foundation
 let usage = """
 Usage:
   DoorIntoSummer                                             open the chat on the review server at 127.0.0.1:8765
-  DoorIntoSummer send <server url> <message> [<job> <url>]   send one message, one instruction per @session, with an image reference when a job and a url follow, and print each message number
+  DoorIntoSummer send <server url> <message> [<reference>]   send one message, one instruction per @session, with an image reference when a job and a url follow, or a session and an attempt whose post gives it, and print each message number
   DoorIntoSummer cards <server url>                          print the cards the server serves, as the chat decodes them
   DoorIntoSummer validate <server url> <session> <attempt>   file the image of that attempt through the server and print its file name
   DoorIntoSummer events <server url> [<frames>]              follow the server's event stream as the chat does and print each frame, one by default
@@ -29,7 +29,13 @@ func loaded(_ address: String) async -> Chat? {
 @MainActor
 func sent(_ arguments: [String]) async -> Int32 {
     guard arguments.count == 2 || arguments.count == 4, let chat = await loaded(arguments[0]) else { return 1 }
-    if arguments.count == 4 {
+    if arguments.count == 4, let attempt = Int(arguments[3]) {
+        guard let post = post(of: arguments[2], attempt: attempt, in: chat), post.job != nil else {
+            print("No card shows @\(arguments[2]) image generation \(attempt) with a job.")
+            return 1
+        }
+        chat.attach(post)
+    } else if arguments.count == 4 {
         guard let url = URL(string: arguments[3]) else {
             print("No URL in \(arguments[3]).")
             return 2
@@ -52,18 +58,31 @@ func listed(_ arguments: [String]) async -> Int32 {
     guard arguments.count == 1, let chat = await loaded(arguments[0]) else { return 1 }
     for card in chat.cards {
         print("session \(card.session) attempt \(card.attempt) at \(card.at.formatted(iso)) job \(card.job?.model ?? "unavailable") working \(card.working?.ratio.label ?? "none") validated \(card.validated)")
-        for said in card.conversation {
-            print("  reviewer \(said.number) attempt \(said.attempt) state \(said.state.rawValue) sent_at \(said.sentAt.formatted(iso)) reference \(said.reference.map { "\($0.job) \($0.url.absoluteString)" } ?? "none"): \(said.text)")
+        for spoken in card.conversation {
+            print(line(of: spoken))
         }
     }
     return 0
 }
 
+private func line(of spoken: Spoken) -> String {
+    switch spoken {
+    case .reviewer(let said):
+        "  reviewer \(said.number) attempt \(said.attempt) state \(said.state.rawValue) sent_at \(said.sentAt.formatted(iso)) reference \(said.reference.map { "\($0.job) \($0.url.absoluteString)" } ?? "none"): \(said.text)"
+    case .session(let answered):
+        "  session attempt \(answered.attempt) at \(answered.seen.map { $0.at.formatted(iso) } ?? "unavailable") job \(answered.seen?.job?.id ?? "unavailable") image \(answered.seen?.generation.url.absoluteString ?? "unavailable") validated \(answered.seen.map { String($0.validated) } ?? "unavailable")"
+    }
+}
+
+@MainActor
+private func post(of session: String, attempt: Int, in chat: Chat) -> Post? {
+    chat.messages.lazy.compactMap { if case .post(let shown) = $0 { shown } else { nil } }.first { $0.session == session && $0.attempt == attempt }
+}
+
 @MainActor
 func validated(_ arguments: [String]) async -> Int32 {
     guard arguments.count == 3, let attempt = Int(arguments[2]), let chat = await loaded(arguments[0]) else { return 1 }
-    guard let post = chat.messages.lazy.compactMap({ if case .post(let post) = $0 { post } else { nil } })
-        .first(where: { $0.session == arguments[1] && $0.attempt == attempt }) else {
+    guard let post = post(of: arguments[1], attempt: attempt, in: chat) else {
         print("No card shows @\(arguments[1]) image generation \(arguments[2]).")
         return 1
     }

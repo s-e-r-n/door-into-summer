@@ -32,9 +32,9 @@ struct Post: Equatable, Hashable, Identifiable, Sendable {
     let session: String
     let subject: String
     let attempt: Int
-    let at: Date
+    let at: Date?
     let original: Picture?
-    let generation: Picture
+    let generation: Picture?
     let job: Job?
     let validated: Bool
 }
@@ -80,26 +80,43 @@ func messages(of cards: [Card], pending: [Pending], validated: Set<String>) -> [
 }
 
 func shown(_ reference: Reference, in cards: [Card]) -> ShownReference {
-    let card = cards.first { $0.job?.id == reference.job }
-    return ShownReference(job: reference.job, url: reference.url, session: card?.session, attempt: card?.attempt)
+    let source = cards.lazy.flatMap { card in card.answers.map { (session: card.session, attempt: $0.attempt, job: $0.seen?.job?.id) } }
+        .first { $0.job == reference.job }
+    return ShownReference(job: reference.job, url: reference.url, session: source?.session, attempt: source?.attempt)
 }
 
 private func placed(of card: Card, in cards: [Card], validated: Set<String>) -> [Placed] {
-    let id = "\(card.session)@\(card.attempt)"
-    let post = Post(id: id, session: card.session, subject: card.subject, attempt: card.attempt, at: card.at, original: card.original,
-                    generation: card.generation, job: card.job, validated: card.validated || validated.contains(id))
-    var listed = [Placed(at: card.at, rank: 0, message: .post(post))]
+    let times = nondecreasing(card.conversation.map(\.at))
+    var listed = card.conversation.indices.map { rank in
+        Placed(at: times[rank], rank: rank, message: message(of: card.conversation[rank], on: card, in: cards, validated: validated))
+    }
     if let working = card.working {
         let next = WorkingPost(id: "\(card.session)~", session: card.session, subject: card.subject, attempt: card.attempt + 1, ratio: working.ratio, job: card.job)
-        listed.append(Placed(at: card.at, rank: 1, message: .working(next)))
-    }
-    listed += card.conversation.map { said in
-        let message = ReviewerMessage(id: "\(card.session)#\(said.number)", session: card.session, attempt: said.attempt, text: said.text,
-                                      mark: said.state == .read ? .read : .delivered, at: said.sentAt,
-                                      reference: said.reference.map { shown($0, in: cards) })
-        return Placed(at: said.sentAt, rank: 2, message: .reviewer(message))
+        listed.append(Placed(at: card.at, rank: card.conversation.count, message: .working(next)))
     }
     return listed
+}
+
+private func nondecreasing(_ times: [Date?]) -> [Date] {
+    var latest = times.lazy.compactMap { $0 }.first ?? .distantPast
+    return times.map { time in
+        latest = max(latest, time ?? latest)
+        return latest
+    }
+}
+
+private func message(of spoken: Spoken, on card: Card, in cards: [Card], validated: Set<String>) -> Message {
+    switch spoken {
+    case .reviewer(let said):
+        return .reviewer(ReviewerMessage(id: "\(card.session)#\(said.number)", session: card.session, attempt: said.attempt, text: said.text,
+                                         mark: said.state == .read ? .read : .delivered, at: said.sentAt,
+                                         reference: said.reference.map { shown($0, in: cards) }))
+    case .session(let answered):
+        let id = "\(card.session)@\(answered.attempt)"
+        let seen = answered.seen
+        return .post(Post(id: id, session: card.session, subject: card.subject, attempt: answered.attempt, at: seen?.at, original: seen?.original,
+                          generation: seen?.generation, job: seen?.job, validated: seen?.validated == true || validated.contains(id)))
+    }
 }
 
 enum RunKind: Equatable, Sendable {
