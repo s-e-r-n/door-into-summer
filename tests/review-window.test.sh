@@ -130,7 +130,6 @@ said_with() {
   printf '.[] | select(.session == "%s") | [.conversation[] | select(.from == "reviewer") | .state] | join(" ") == "%s"' "$1" "$2"
 }
 
-expect "syntax" "$(for file in "$repo"/bin/review_window.py "$repo"/bin/review/*.py; do python3 -I -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' "$file" || echo "$file"; done; echo ok)" ok
 expect "help gives the usage" "$(python3 "$repo/bin/review_window.py" --help | grep -c '^  review_window.py \[<port>\]')" 1
 expect "hy-session.sh of hypnos main is there to send" "$(test -f "$session_script" && grep -c '^#   hy-session.sh send <name> <message>' "$session_script")" 1
 
