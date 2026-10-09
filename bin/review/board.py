@@ -41,34 +41,47 @@ class Board:
     def __init__(self):
         self.changed = threading.Condition()
         self.refreshing = threading.Lock()
-        self.jobs = Reader(self.refresh)
+        self.jobs = Reader(self.refresh_job)
+        self.live: list[str] = []
         self.cards: dict[str, Card] = {}
         self.attempts: dict[str, dict[int, Card]] = {}
         self.filed: set[str] = set()
         self.shown: dict[str, dict] = {}
         self.version = 0
 
-    def refresh(self) -> None:
+    def refresh(self, names: set[str] | None = None) -> None:
         with self.refreshing:
-            self.read_board()
+            self.read_board(names)
 
-    def read_board(self) -> None:
+    def refresh_job(self, job_id: str) -> None:
+        with self.changed:
+            names = {name for name, kept in self.attempts.items() if any(card.job == job_id for card in kept.values())}
+        self.refresh(names)
+
+    def read_session(self, name: str, filed: set[str]) -> tuple[Card, dict[int, Card], dict] | None:
+        card = read_card(sessions.images_file(name)) or self.cards.get(name)
+        if card is None:
+            return None
+        kept = self.attempts.get(name, {})
+        attempts = kept | {card.attempt: kept_card(kept.get(card.attempt), card)}
+        return card, attempts, shown(name, card, attempts, filed, self.jobs.shown_job)
+
+    def kept_session(self, name: str) -> tuple[Card, dict[int, Card], dict] | None:
+        return (self.cards[name], self.attempts[name], self.shown[name]) if name in self.cards else None
+
+    def read_board(self, names: set[str] | None) -> None:
         try:
             filed = {store.job_key(job) for job in store.job_ids()}
         except OSError:
             filed = self.filed
-        cards = {}
-        attempts = {}
-        for name in sessions.live_sessions():
-            card = read_card(sessions.images_file(name)) or self.cards.get(name)
-            if card is not None:
-                kept = self.attempts.get(name, {})
-                cards[name] = card
-                attempts[name] = kept | {card.attempt: kept_card(kept.get(card.attempt), card)}
-        listed = {name: shown(name, card, attempts[name], filed, self.jobs.shown_job) for name, card in cards.items()}
+        if names is None:
+            self.live = sessions.live_sessions()
+        read = {name: self.read_session(name, filed) if names is None or name in names else self.kept_session(name) for name in self.live}
+        entries = {name: entry for name, entry in read.items() if entry is not None}
+        listed = {name: entry[2] for name, entry in entries.items()}
         with self.changed:
-            self.cards = cards
-            self.attempts = attempts
+            self.cards = {name: entry[0] for name, entry in entries.items()}
+            self.attempts = {name: entry[1] for name, entry in entries.items()}
             self.filed = filed
             if listed != self.shown:
                 self.shown = listed
