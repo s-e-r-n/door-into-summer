@@ -9,7 +9,7 @@ import urllib.request
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from math import cos, pi
+from math import cos, gcd, pi
 from pathlib import Path, PurePosixPath
 from statistics import median
 from urllib.parse import urlsplit
@@ -24,8 +24,8 @@ chunk_bytes = 1 << 20
 hash_side = 32
 hash_band = 8
 match_bits = 10
-needed_fields = ("result_url", "model", "aspect", "quality", "resolution", "batch", "prompt")
 file_extension = re.compile(r"\A\.[A-Za-z0-9]+\Z")
+pixel_dimensions = re.compile(rb"\A([1-9][0-9]*) ([1-9][0-9]*)\Z")
 hex_fingerprint = re.compile(r"\A[0-9A-Fa-f]{16}\Z")
 hex_job = re.compile(r"\A[0-9a-f]{32}\Z")
 
@@ -42,9 +42,12 @@ class HiggsfieldFailed(Exception):
 class Generation:
     result_url: str
     extension: str
-    model: str
-    parameters: store.Parameters
-    prompt: str
+    model: str | None
+    aspect: str | None
+    quality: str | None
+    resolution: str | None
+    batch: int | None
+    prompt: str | None
 
 
 @dataclass(frozen=True)
@@ -67,15 +70,14 @@ def generation_of(job_id: str) -> Generation:
     if isinstance(answer, str):
         raise HiggsfieldFailed(f"Job {job_id} unread: {answer}")
     url = answer.get("result_url")
-    fields = jobs.shown_fields(job_id, answer) | ({"result_url": url} if isinstance(url, str) else {})
-    lacking = [name for name in needed_fields if name not in fields]
-    if lacking:
-        raise HiggsfieldFailed(f"Job {job_id} came without {', '.join(lacking)}.")
-    extension = PurePosixPath(urlsplit(fields["result_url"]).path).suffix
+    if not isinstance(url, str):
+        raise HiggsfieldFailed(f"Job {job_id} came without result_url.")
+    extension = PurePosixPath(urlsplit(url).path).suffix
     if not file_extension.match(extension):
-        raise HiggsfieldFailed(f"The result_url of job {job_id} names no file extension: {fields['result_url']}")
-    parameters = store.Parameters(fields["aspect"], fields["quality"], fields["resolution"], fields["batch"])
-    return Generation(fields["result_url"], extension, fields["model"], parameters, fields["prompt"])
+        raise HiggsfieldFailed(f"The result_url of job {job_id} names no file extension: {url}")
+    fields = jobs.shown_fields(job_id, answer)
+    return Generation(url, extension, fields.get("model"), fields.get("aspect"), fields.get("quality"),
+                      fields.get("resolution"), fields.get("batch"), fields.get("prompt"))
 
 
 def unread_reason(error: Exception) -> str:
@@ -139,6 +141,20 @@ def fingerprint(path: Path) -> str:
     return f"{int(''.join('1' if value > middle else '0' for value in band), 2):016x}"
 
 
+def pixel_size(path: Path) -> tuple[int, int]:
+    measured = pixel_dimensions.match(tool_output(["magick", "identify", "-format", "%w %h", f"{path}[0]"], path))
+    if measured is None:
+        raise OSError(errno.EIO, "magick identify gave no width and height", str(path))
+    return int(measured[1]), int(measured[2])
+
+
+def parameters_of(generation: Generation, image: Path) -> store.Parameters:
+    width, height = pixel_size(image)
+    divisor = gcd(width, height)
+    return store.Parameters(generation.aspect or f"{width // divisor}:{height // divisor}", generation.quality,
+                            generation.resolution or f"{width}x{height}", generation.batch)
+
+
 def distance(first: str, second: str) -> int:
     return (int(first, 16) ^ int(second, 16)).bit_count()
 
@@ -180,12 +196,13 @@ def validate(session: str, attempt: int, card: Card | None) -> str:
         download(generation.result_url, temporary)
         write_job_id(temporary, job)
         hashed = fingerprint(temporary)
+        parameters = parameters_of(generation, temporary)
         rename_without_replacing(temporary, gallery / name)
     finally:
         temporary.unlink(missing_ok=True)
     try:
         store.append(store.Line(job_id, now.isoformat(timespec="seconds"), session, card.subject, generation.model,
-                                generation.parameters, generation.prompt, image_location(card.original), name, hashed))
+                                parameters, generation.prompt, image_location(card.original), name, hashed))
     except (OSError, store.AlreadyFiled):
         (gallery / name).unlink()
         raise

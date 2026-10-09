@@ -19,9 +19,9 @@ default_config = json.dumps({"gallery": default_gallery}) + "\n"
 @dataclass(frozen=True)
 class Parameters:
     ratio: str
-    quality: str
+    quality: str | None
     resolution: str
-    batch: int
+    batch: int | None
 
 
 @dataclass(frozen=True)
@@ -30,9 +30,9 @@ class Line:
     validated_at: str
     session: str
     subject: str
-    model: str
+    model: str | None
     parameters: Parameters
-    prompt: str
+    prompt: str | None
     original: str | None
     file: str
     fingerprint: str

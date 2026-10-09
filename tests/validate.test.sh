@@ -174,7 +174,7 @@ for each in "$mug_job picture.png" "$next_job picture.png" "$sofa_job picture.pn
   "${cup_jobs[0]} picture.png" "${cup_jobs[1]} smaller.png" "${cup_jobs[2]} mirrored.png"; do
   job $each
 done
-job "$rug_job" picture.png 'del(.params.prompt)'
+jq --arg id "$rug_job" '.id = $id | del(.result_url)' "$root/recorded.json" > "$root/jobs/$rug_job.json"
 cat > "$root/jobs/$shelf_job.meanwhile" <<MEANWHILE
 jq -cn --arg job "$shelf_job" '{job: \$job, validated_at: "2026-10-08T23:00:00+14:00", session: "shelf", subject: "a shelf",
   model: "Grok Image 2.0", parameters: {ratio: "9:16", quality: "medium", resolution: "1k", batch: 1}, prompt: "p",
@@ -292,8 +292,8 @@ expect "502 names a Higgsfield failure: the job read fails" \
   "$(posted desk 1) $(answer desk .error)" "502 Job $unknown_job unread: Error: Job not found"
 expect "502 names a Higgsfield failure: result_url cannot be downloaded" \
   "$(posted bed 1) $(answer bed '.error | startswith("file://'"$root"'/results/missing.png unread: ")')" "502 true"
-expect "502 names a Higgsfield failure: the job lacks a field of the store line" \
-  "$(posted rug 1) $(answer rug .error)" "502 Job $rug_job came without prompt."
+expect "502 names a Higgsfield failure: the job holds no result_url" \
+  "$(posted rug 1) $(answer rug .error)" "502 Job $rug_job came without result_url."
 
 chmod 555 "$gallery"
 expect "500 names the path that refused the write: the gallery" \

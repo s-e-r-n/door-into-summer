@@ -33,3 +33,8 @@ Edges: `validation` needs `store.Line` and `store.Parameters`.
 | Fact | Owner | Readers | Writer |
 | ---- | ----- | ------- | ------ |
 | the store line of a job | store.jsonl, through `store` | a card's `validated`, `--match`, the uniqueness check of `append` | `store.append`, called by `validation.validate` |
+
+## Amendments
+
+- `validation.parameters_of` reads the pixel size of every filed image, and uses it only where the job holds no `aspect` or no `resolution`: one code path, one more `magick identify` per validation.
+- The rug case of tests/validate.test.sh asserted the refusal of a job without `prompt`, which the correction removed; it now asserts the refusal of a job without `result_url`, the one field still required.
