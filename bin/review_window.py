@@ -9,7 +9,7 @@ from urllib.parse import parse_qs
 
 from review import sessions, store, validation
 from review.board import Board, events_between
-from review.changes import watch
+from review.changes import Watched, watch
 from review.conversation import Reference, parsed_reference, send_feedback
 
 usage = """Usage:
@@ -95,8 +95,8 @@ def validated(body: bytes, board: Board) -> tuple[int, dict]:
         return 500, {"error": refused_path(error)}
 
 
-def watched_paths() -> list[Path]:
-    return [*sessions.watched_paths(), store.store_file]
+def watched_paths() -> list[Watched]:
+    return [*sessions.watched_paths(), Watched(store.store_file, None)]
 
 
 def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:

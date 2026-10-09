@@ -4,6 +4,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from review.changes import Watched
+
 home = Path(os.environ.get("HYPNOS_HOME") or Path.home() / ".hypnos")
 state = home / "state"
 data = home / "data"
@@ -42,10 +44,10 @@ def inbox(name: str) -> Path:
     return state / f"{name}.inbox"
 
 
-def watched_paths() -> list[Path]:
-    paths = [home, state, data]
+def watched_paths() -> list[Watched]:
+    paths = [Watched(home, None), Watched(state, None), Watched(data, None)]
     for name in live_sessions():
-        paths += [data / name, images_file(name), inbox(name), inbox(name) / "handled"]
+        paths += [Watched(path, name) for path in (data / name, images_file(name), inbox(name), inbox(name) / "handled")]
     return paths
 
 

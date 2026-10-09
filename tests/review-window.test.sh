@@ -37,7 +37,7 @@ now_ms() {
 }
 
 served() {
-  (cd "$root/cwd" && exec env PATH="$root/stub:$PATH" python3 "$root/bin/review_window.py" "$port" > "$root/served" 2>&1) &
+  (cd "$root/cwd" && exec env PATH="$root/stub:$PATH" PYTHONPATH="$root/hook" REVIEW_AUDIT_LOG="$root/audit.log" python3 "$root/bin/review_window.py" "$port" > "$root/served" 2>&1) &
   server="$!"
   for _ in $(seq 50); do
     grep -q '^serving: ' "$root/served" 2>/dev/null && break
@@ -162,6 +162,10 @@ paths() {
   find "$home" "$root/bin" "$root/cwd" | grep -Ev "^$home/state/[a-z-]+\.inbox" | sort
 }
 
+opened_since() {
+  tail -n +"$(($1 + 1))" "$root/audit.log" | grep -F "$home/" | sed "s#^$home/##" | sort -u | paste -sd ' ' -
+}
+
 conversation() {
   curl -s "$url/cards" | jq -c --arg session "$1" \
     '.[] | select(.session == $session) | .conversation | map(if .from == "session" then "attempt \(.attempt)" else [.text, .state] end)'
@@ -178,7 +182,22 @@ said_with() {
 expect "help gives the usage" "$(python3 "$repo/bin/review_window.py" --help | grep -c '^  review_window.py \[<port>\]')" 1
 expect "hy-session.sh of hypnos main is there to send" "$(test -f "$session_script" && grep -c '^#   hy-session.sh send <name> <message>' "$session_script")" 1
 
-mkdir -p "$home/state" "$home/data" "$root/images" "$root/cwd" "$root/stub"
+mkdir -p "$home/state" "$home/data" "$root/images" "$root/cwd" "$root/stub" "$root/hook"
+cat > "$root/hook/sitecustomize.py" <<'PY'
+import os
+import sys
+
+log = open(os.environ["REVIEW_AUDIT_LOG"], "a")
+
+
+def logged(event, arguments):
+    if event == "open" and isinstance(arguments[0], (str, os.PathLike)):
+        log.write(f"{os.fspath(arguments[0])}\n")
+        log.flush()
+
+
+sys.addaudithook(logged)
+PY
 mkdir -p "$DOOR_INTO_SUMMER_SUPPORT"
 jq -n --arg gallery "$root/gallery" '{gallery: $gallery}' > "$DOOR_INTO_SUMMER_SUPPORT/config.json"
 python3 "$repo/bin/review_window.py" --setup > /dev/null
@@ -263,8 +282,11 @@ jq -n --arg generation "$root/images/chair-1.svg" \
 sleep 0.3
 read_at="$(now_ms)"
 frames_before="$(wc -l < "$root/events" | tr -d ' ')"
+opened_before="$(wc -l < "$root/audit.log" | tr -d ' ')"
 taken mug 001
 within "read is pushed once the session moves the message to handled/, while slow's job read sleeps 3 s" "$(pushed_after "$read_at" "$(said_with mug 'read delivered')")" 1000
+expect "between the move and its push, the server opens the files and the watched directories of mug alone" "$(opened_since "$opened_before")" \
+  "data/mug data/mug/images.json state/mug.inbox state/mug.inbox/002.msg state/mug.inbox/handled state/mug.inbox/handled/001.msg"
 expect "that one change is pushed as one session_update holding mug alone" "$(frames_after "$frames_before")" "session_update mug"
 within "slow's job fields arrive in their own session_update once read" "$(pushed_after "$read_at" '.[] | select(.session == "slow") | .job.id == "slow-job"' 4000)" 4000
 expect "slow's card went out at once without its job, then with it" "$(frames_after "$frames_before")" "session_update mug|session_update slow"

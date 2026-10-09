@@ -36,7 +36,7 @@ def shown_fields(job_id: str, job: dict) -> dict:
 
 
 class Reader:
-    def __init__(self, on_read: Callable[[], None]):
+    def __init__(self, on_read: Callable[[str], None]):
         self.on_read = on_read
         self.read: dict[str, dict | None] = {}
         self.reading: set[str] = set()
@@ -56,4 +56,4 @@ class Reader:
             print(f"job {job_id} unread: {outcome}", file=sys.stderr, flush=True)
         self.read[job_id] = None if isinstance(outcome, str) else shown_fields(job_id, outcome)
         self.reading.discard(job_id)
-        self.on_read()
+        self.on_read(job_id)
