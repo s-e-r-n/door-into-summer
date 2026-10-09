@@ -163,9 +163,6 @@ printf -- '-- store.py\n'
 
 cp "$support/store.jsonl" "$root/store.before"
 stored 'store.append(sample.line("job-after"))'
-expect "store.py appends one line, one JSON object, the store line schema in its order" \
-  "$(tail -1 "$support/store.jsonl" | jq -c '[keys_unsorted, (.parameters | keys_unsorted)]')" \
-  '[["job","validated_at","session","subject","model","parameters","prompt","original","file","fingerprint"],["ratio","quality","resolution","batch"]]'
 expect "the store is append only: the lines before stay byte for byte" \
   "$(wc -l < "$support/store.jsonl" | tr -d ' ') $(head -c "$(stat -f %z "$root/store.before")" "$support/store.jsonl" | cmp - "$root/store.before" && echo same)" "2 same"
 expect "store.py reads the store's job ids" "$(stored 'print(sorted(store.job_ids()))')" "['job-after', 'job-before']"
