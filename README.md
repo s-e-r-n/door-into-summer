@@ -164,6 +164,16 @@ IIM bounds 2:103 to 32 bytes and a Higgsfield job id holds 36: the id is written
 
 A failure before the image is in hand, the job unread, `result_url` not downloaded, or a job lacking a field of the store line, answers 502. A failure after it, the temporary file, exiftool, ImageMagick, the rename or the store line, answers 500 naming the path. A refusal leaves nothing behind: the temporary file goes, and so does the renamed image whose line the store did not take. The check that the store does not hold the job yet runs again inside the append, under its lock, so two validations of one job file one image and one line.
 
+### Match
+
+```
+python3 bin/review_window.py --match <image>
+```
+
+traces an image back to its store line, a resized or color-graded copy included. It computes the fingerprint of `<image>` as validation does, compares it with the fingerprint of every line of store.jsonl that holds 16 hex digits, and prints the nearest line as JSON, then `distance: <n>`, the number of bits of 64 in which the two fingerprints differ, and exits 0. Beyond 10 bits it prints `no match within 10 bits` and exits 1: the image was never validated. It reads store.jsonl and nothing else, so it needs no running server and no startup check. An image or a store.jsonl it cannot read prints `unreadable: <path>: <reason>` on stderr and exits 2.
+
+On ten images measured, photographs and illustrations, a resize, a JPEG export, a change of brightness of up to 20 %, of saturation of up to 30 %, of levels or gamma, and a hue shift of up to 18 degrees each stayed within 10 bits, while any two of the ten differed by 24 bits or more. A black and white conversion and a hue shift of 36 degrees each reached 14 bits on one of them, and can go untraced.
+
 ## Tests
 
 ```
@@ -177,6 +187,12 @@ tests/validate.test.sh
 ```
 
 `POST /validate` in a sandbox under `$TMPDIR`: its own `HYPNOS_HOME`, Application Support directory and gallery, and a fake `higgsfield` first on `PATH` that answers recorded jobs whose `result_url` is a local file. It runs offline and needs `jq`, `curl`, exiftool and ImageMagick.
+
+```
+tests/match.test.sh
+```
+
+`--match` on images filed by `POST /validate`, on resized and color-graded copies of them, and on an unrelated image, in a sandbox like the one of validate.test.sh. Offline, it needs `jq`, `curl`, exiftool and ImageMagick.
 
 ```
 tests/reference.test.sh

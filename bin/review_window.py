@@ -13,9 +13,10 @@ from review.changes import watch
 from review.conversation import Reference, parsed_reference, send_feedback
 
 usage = """Usage:
-  review_window.py [<port>] serve the review window on 127.0.0.1:<port>, 8765 by default, 0 for a free one
-  review_window.py --setup  create what is missing of the store structure, then exit
-  review_window.py --help   print this usage
+  review_window.py [<port>]         serve the review window on 127.0.0.1:<port>, 8765 by default, 0 for a free one
+  review_window.py --setup          create what is missing of the store structure, then exit
+  review_window.py --match <image>  print the store line whose fingerprint is nearest to the image's, within 10 bits
+  review_window.py --help           print this usage
 
 The contract an image session writes, the routes, the cards and the store structure are stated in the README."""
 page = Path(__file__).resolve().parent / "review-window.html"
@@ -212,12 +213,28 @@ def set_up_store() -> int:
     return 1 if flaws else 0
 
 
+def print_match(image: Path) -> int:
+    try:
+        match = validation.match_of(image)
+    except OSError as error:
+        print(f"unreadable: {refused_path(error)}", file=sys.stderr)
+        return 2
+    if match is None:
+        print(f"no match within {validation.match_bits} bits")
+        return 1
+    print(json.dumps(match.line))
+    print(f"distance: {match.distance}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if argv[1:] == ["--help"]:
         print(usage)
         return 0
     if argv[1:] == ["--setup"]:
         return set_up_store()
+    if len(argv) == 3 and argv[1] == "--match":
+        return print_match(Path(argv[2]).absolute())
     if len(argv) > 2 or (len(argv) == 2 and not argv[1].isdigit()):
         print(usage, file=sys.stderr)
         return 2
