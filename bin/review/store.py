@@ -44,6 +44,12 @@ class Flaw:
     path: Path
 
 
+class AlreadyFiled(Exception):
+    def __init__(self, job: str, file: str):
+        super().__init__(f"Job {job} is already filed as {file}.")
+        self.file = file
+
+
 def gallery_in(config: Path) -> Path | None:
     try:
         raw = json.loads(config.read_bytes())
@@ -99,17 +105,22 @@ def set_up() -> Iterator[Path]:
         yield from created_directories(gallery)
 
 
-def job_in(raw: bytes) -> str | None:
+def filed_pair(raw: bytes) -> tuple[str, str] | None:
     try:
         line = json.loads(raw)
     except ValueError:
         return None
-    job = line.get("job") if isinstance(line, dict) else None
-    return job if isinstance(job, str) else None
+    if not isinstance(line, dict) or not isinstance(line.get("job"), str) or not isinstance(line.get("file"), str):
+        return None
+    return line["job"], line["file"]
+
+
+def files_by_job() -> dict[str, str]:
+    return dict(pair for pair in map(filed_pair, store_file.read_bytes().split(b"\n")) if pair is not None)
 
 
 def job_ids() -> set[str]:
-    return {job for job in map(job_in, store_file.read_bytes().split(b"\n")) if job is not None}
+    return set(files_by_job())
 
 
 def write_whole(descriptor: int, encoded: bytes) -> None:
@@ -127,6 +138,9 @@ def append(line: Line) -> None:
     descriptor = os.open(store_file, os.O_WRONLY | os.O_APPEND)
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX)
+        filed = files_by_job().get(line.job)
+        if filed is not None:
+            raise AlreadyFiled(line.job, filed)
         write_whole(descriptor, encoded)
     finally:
         os.close(descriptor)
