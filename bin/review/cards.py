@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,16 @@ class Local:
 class Image:
     label: str
     source: Linked | Local
+
+
+@dataclass(frozen=True)
+class Size:
+    width: int
+    height: int
+
+
+SizeOf = Callable[[Linked | Local], Size | None]
+sized_slots = ("original", "generation")
 
 
 @dataclass(frozen=True)
@@ -91,22 +102,38 @@ def read_card(path: Path) -> Card | None:
     return Card(raw["subject"], raw["attempt"], original, generation, job, read_working(raw.get("working")), at)
 
 
-def shown_image(name: str, slot: str, image: Image | None) -> dict | None:
+def shown_image(name: str, slot: str, image: Image | None, size_of: SizeOf) -> dict | None:
     if image is None:
         return None
-    if isinstance(image.source, Linked):
-        return {"label": image.label, "src": image.source.url}
-    return {"label": image.label, "src": f"/image/{name}/{slot}?v={image.source.version}"}
+    src = image.source.url if isinstance(image.source, Linked) else f"/image/{name}/{slot}?v={image.source.version}"
+    size = size_of(image.source)
+    return {"label": image.label, "src": src} | ({} if size is None else {"width": size.width, "height": size.height})
 
 
-def shown_attempt(name: str, card: Card) -> dict:
-    return {"at": iso_time(card.at), "original": shown_image(name, "original", card.original),
-            "generation": shown_image(name, "generation", card.generation)}
+def shown_attempt(name: str, card: Card, size_of: SizeOf) -> dict:
+    return {"at": iso_time(card.at), "original": shown_image(name, "original", card.original, size_of),
+            "generation": shown_image(name, "generation", card.generation, size_of)}
 
 
-def shown_card(name: str, card: Card) -> dict:
-    shown = {"session": name, "subject": card.subject, "attempt": card.attempt} | shown_attempt(name, card)
+def shown_card(name: str, card: Card, size_of: SizeOf) -> dict:
+    shown = {"session": name, "subject": card.subject, "attempt": card.attempt} | shown_attempt(name, card, size_of)
     return shown if card.working is None else shown | {"working": {"aspect": card.working.aspect}}
+
+
+def without_size(image: dict | None) -> dict | None:
+    return None if image is None else {key: value for key, value in image.items() if key not in ("width", "height")}
+
+
+def without_sizes(item: dict) -> dict:
+    return {key: without_size(value) if key in sized_slots else value for key, value in item.items()}
+
+
+def card_as_served(shown: dict) -> dict:
+    return without_sizes(shown) | {"conversation": [without_sizes(item) for item in shown["conversation"]]}
+
+
+def sources_of(card: Card) -> set[Linked | Local]:
+    return {image.source for image in (card.original, card.generation) if image is not None}
 
 
 def image_location(image: Image | None) -> str | None:

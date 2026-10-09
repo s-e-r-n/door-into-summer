@@ -23,6 +23,7 @@ struct ChatView: View {
         .foregroundStyle(Color.foreground)
         .background(Color.desk)
         .environment(chat)
+        .environment(\.images, chat.images)
         .task { await chat.start() }
     }
 

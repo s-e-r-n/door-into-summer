@@ -1,13 +1,22 @@
 import threading
 from collections.abc import Callable
-from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, replace
 
 from review import sessions, store
-from review.cards import Card, local_path, read_card, shown_attempt, shown_card
+from review.cards import Card, Linked, Local, SizeOf, local_path, read_card, shown_attempt, shown_card, sources_of
 from review.conversation import Answered, Said, conversation_of, shown as shown_item
-from review.jobs import Reader
+from review.jobs import read_job
+from review.once import Once
+from review.sizes import measured
 
 keepalive_seconds = 15
+
+
+@dataclass(frozen=True)
+class Reads:
+    job_of: Callable[[str], dict | None]
+    size_of: SizeOf
 
 
 def job_fields(card: Card, filed: set[str], job_of: Callable[[str], dict | None]) -> dict:
@@ -16,14 +25,14 @@ def job_fields(card: Card, filed: set[str], job_of: Callable[[str], dict | None]
     return ({} if job is None else {"job": job}) | {"validated": validated}
 
 
-def attempt_fields(name: str, item: Said | Answered, kept: dict[int, Card], filed: set[str], job_of: Callable[[str], dict | None]) -> dict:
+def attempt_fields(name: str, item: Said | Answered, kept: dict[int, Card], filed: set[str], reads: Reads) -> dict:
     card = kept.get(item.attempt) if isinstance(item, Answered) else None
-    return {} if card is None else shown_attempt(name, card) | job_fields(card, filed, job_of)
+    return {} if card is None else shown_attempt(name, card, reads.size_of) | job_fields(card, filed, reads.job_of)
 
 
-def shown(name: str, card: Card, kept: dict[int, Card], filed: set[str], job_of: Callable[[str], dict | None]) -> dict:
-    conversation = [shown_item(item) | attempt_fields(name, item, kept, filed, job_of) for item in conversation_of(name, kept)]
-    return shown_card(name, card) | job_fields(card, filed, job_of) | {"conversation": conversation}
+def shown(name: str, card: Card, kept: dict[int, Card], filed: set[str], reads: Reads) -> dict:
+    conversation = [shown_item(item) | attempt_fields(name, item, kept, filed, reads) for item in conversation_of(name, kept)]
+    return shown_card(name, card, reads.size_of) | job_fields(card, filed, reads.job_of) | {"conversation": conversation}
 
 
 def events_between(sent: dict[str, dict], shown: dict[str, dict]) -> list[tuple[str, object]]:
@@ -41,7 +50,10 @@ class Board:
     def __init__(self):
         self.changed = threading.Condition()
         self.refreshing = threading.Lock()
-        self.jobs = Reader(self.refresh_job)
+        self.workers = ThreadPoolExecutor(thread_name_prefix="read")
+        self.jobs = Once(read_job, self.refresh_job, self.workers)
+        self.sizes = Once(measured, self.refresh_image, self.workers)
+        self.reads = Reads(self.jobs.value, self.sizes.value)
         self.live: list[str] = []
         self.cards: dict[str, Card] = {}
         self.attempts: dict[str, dict[int, Card]] = {}
@@ -58,13 +70,18 @@ class Board:
             names = {name for name, kept in self.attempts.items() if any(card.job == job_id for card in kept.values())}
         self.refresh(names)
 
+    def refresh_image(self, source: Linked | Local) -> None:
+        with self.changed:
+            names = {name for name, kept in self.attempts.items() if any(source in sources_of(card) for card in kept.values())}
+        self.refresh(names)
+
     def read_session(self, name: str, filed: set[str]) -> tuple[Card, dict[int, Card], dict] | None:
         card = read_card(sessions.images_file(name)) or self.cards.get(name)
         if card is None:
             return None
         kept = self.attempts.get(name, {})
         attempts = kept | {card.attempt: kept_card(kept.get(card.attempt), card)}
-        return card, attempts, shown(name, card, attempts, filed, self.jobs.shown_job)
+        return card, attempts, shown(name, card, attempts, filed, self.reads)
 
     def kept_session(self, name: str) -> tuple[Card, dict[int, Card], dict] | None:
         return (self.cards[name], self.attempts[name], self.shown[name]) if name in self.cards else None

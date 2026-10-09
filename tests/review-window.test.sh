@@ -279,7 +279,7 @@ live slow
 mkdir -p "$home/data/slow"
 jq -n --arg generation "$root/images/chair-1.svg" \
   '{subject: "a slow one", attempt: 1, generation: {label: "generation 1", path: $generation}, job: "slow-job"}' > "$home/data/slow/images.json"
-sleep 0.3
+sleep 1
 read_at="$(now_ms)"
 frames_before="$(wc -l < "$root/events" | tr -d ' ')"
 opened_before="$(wc -l < "$root/audit.log" | tr -d ' ')"
@@ -290,6 +290,10 @@ expect "between the move and its push, the server opens the files and the watche
 expect "that one change is pushed as one session_update holding mug alone" "$(frames_after "$frames_before")" "session_update mug"
 within "slow's job fields arrive in their own session_update once read" "$(pushed_after "$read_at" '.[] | select(.session == "slow") | .job.id == "slow-job"' 4000)" 4000
 expect "slow's card went out at once without its job, then with it" "$(frames_after "$frames_before")" "session_update mug|session_update slow"
+expect "mug's pushed card carries the width and height of each path image" \
+  "$(pushed_board | jq -c '.[] | select(.session == "mug") | [.original.width, .original.height, .generation.width, .generation.height]')" "[400,300,400,300]"
+expect "GET /cards is the pushed board without its sizes" "$(curl -s "$url/cards" | jq -cS 'sort_by(.session)')" \
+  "$(pushed_board | jq -cS 'sort_by(.session) | walk(if type == "object" then del(.width, .height) else . end)')"
 rm -rf "$home/state/slow.meta" "$home/state/slow.inbox" "$home/data/slow"
 pushed_after "$(now_ms)" 'all(.[]; .session != "slow")' > /dev/null
 expect "the first feedback is read, the second still delivered" "$(conversation mug | jq -c 'map(select(type == "array") | .[1])')" \

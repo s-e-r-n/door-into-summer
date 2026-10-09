@@ -11,6 +11,7 @@ enum Connection: Equatable, Sendable {
 @Observable
 final class Chat {
     let thread = ThreadStore()
+    let images = ImageStore()
     private(set) var connection = Connection.connecting
     private(set) var commands: [Command] = []
     private(set) var attached: ShownReference?
