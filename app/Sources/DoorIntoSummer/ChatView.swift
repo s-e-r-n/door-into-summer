@@ -3,24 +3,36 @@ import SwiftUI
 struct ChatView: View {
     @Bindable var chat: Chat
 
-    private var inspecting: Binding<Bool> {
-        Binding(get: { chat.inspected != nil }, set: { shown in if !shown { chat.inspect(nil) } })
-    }
+    private var open: Bool { chat.inspected != nil }
 
     var body: some View {
-        feed
-            .safeAreaInset(edge: .bottom, spacing: 0) { ChatBar(chat: chat) }
-            .inspector(isPresented: inspecting) {
-                if let post = chat.inspected {
-                    MetadataPanel(post: post) { chat.inspect(nil) }
-                        .inspectorColumnWidth(Layout.panelWidth)
-                }
+        HStack(spacing: 0) {
+            feed
+                .safeAreaInset(edge: .bottom, spacing: 0) { ChatBar(chat: chat) }
+            if open {
+                Color.separator.frame(width: 1).transition(.identity)
             }
-            .background { WindowChrome().frame(width: 0, height: 0) }
-            .font(.mono)
-            .foregroundStyle(Color.foreground)
-            .background(Color.desk)
-            .task { await chat.start() }
+            panel
+        }
+        .animation(Layout.panelMotion, value: open)
+        .background { WindowChrome().frame(width: 0, height: 0) }
+        .font(.mono)
+        .foregroundStyle(Color.foreground)
+        .background(Color.desk)
+        .task { await chat.start() }
+    }
+
+    @ViewBuilder private var panel: some View {
+        Group {
+            if let post = chat.lastInspected {
+                MetadataPanel(post: post) { chat.inspect(nil) }
+            } else {
+                Color.desk
+            }
+        }
+        .frame(width: Layout.panelWidth)
+        .frame(width: open ? Layout.panelWidth : 0, alignment: .leading)
+        .clipped()
     }
 
     private var feed: some View {
@@ -45,6 +57,7 @@ struct ChatView: View {
         case .post(let post):
             PostView(post: post, inspected: chat.inspected?.id == post.id,
                      tag: { chat.compose(tagging: $0) },
+                     reference: { chat.attach(post) },
                      details: { chat.inspect(chat.inspected?.id == post.id ? nil : post) },
                      validate: { await chat.validate(post) })
         case .working(let working):

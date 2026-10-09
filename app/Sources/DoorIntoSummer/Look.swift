@@ -15,13 +15,14 @@ extension Color {
 
 extension Font {
     static let mono = Font.custom("JetBrainsMono-Thin", size: 11)
-    static let monoItalic = mono.italic()
+    static let monoItalic = Font.custom("JetBrainsMono-ThinItalic", size: 11)
     static let shapeGlyph = Font.custom("JetBrainsMono-Thin", size: 7)
 }
 
 enum Layout {
     static let horizontalPadding: CGFloat = 32
     static let panelWidth: CGFloat = 400
+    static let panelMotion = Animation.timingCurve(0.25, 0.1, 0.25, 1, duration: 0.22)
     static let barWidth: CGFloat = 847
     static let barHeight: CGFloat = 32
     static let barInset: CGFloat = 11

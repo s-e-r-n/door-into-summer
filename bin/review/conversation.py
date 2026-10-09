@@ -1,11 +1,22 @@
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from review import sessions
+from review.cards import iso_time
 
 feedback_line = re.compile(r"\Afeedback · attempt (\d+): (.*?)\n?\Z", re.DOTALL)
+reference_line = re.compile(r"\A(.*)\nreference: (\S+) (\S+)\n?\Z")
+word = re.compile(r"\A[!-~]+\Z")
+
+
+@dataclass(frozen=True)
+class Reference:
+    job: str
+    url: str
 
 
 @dataclass(frozen=True)
@@ -14,6 +25,8 @@ class Said:
     attempt: int
     text: str
     state: Literal["delivered", "read"]
+    sent_at: float
+    reference: Reference | None
 
 
 @dataclass(frozen=True)
@@ -21,20 +34,57 @@ class Answered:
     attempt: int
 
 
-def send_feedback(name: str, attempt: int, text: str) -> int | sessions.Refused:
-    outcome = sessions.send(name, f"feedback · attempt {attempt}: {text}")
+def valid_job(job: object) -> bool:
+    return isinstance(job, str) and word.match(job) is not None
+
+
+def valid_url(url: object) -> bool:
+    if not isinstance(url, str) or word.match(url) is None:
+        return False
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
+
+
+def parsed_reference(raw: object, text: str) -> Reference | str:
+    if not isinstance(raw, dict):
+        return "The reference holds job and url."
+    if not valid_job(raw.get("job")):
+        return "The reference's job is a job id, one word of printable ASCII."
+    if not valid_url(raw.get("url")):
+        return "The reference's url is an http or https URL, one word of printable ASCII."
+    if text.splitlines() != [text]:
+        return "A text carrying a reference is one line."
+    return Reference(raw["job"], raw["url"])
+
+
+def send_feedback(name: str, attempt: int, text: str, reference: Reference | None) -> int | sessions.Refused:
+    line = f"feedback · attempt {attempt}: {text}"
+    outcome = sessions.send(name, line if reference is None else f"{line}\nreference: {reference.job} {reference.url}")
     return int(outcome.message.stem) if isinstance(outcome, sessions.Delivered) else outcome
+
+
+def feedback_and_reference(content: str) -> tuple[str, Reference | None]:
+    found = reference_line.match(content)
+    if found is None or not valid_job(found.group(2)) or not valid_url(found.group(3)):
+        return content, None
+    return found.group(1), Reference(found.group(2), found.group(3))
 
 
 def read_said(message: Path) -> Said | None:
     try:
-        found = feedback_line.match(message.read_text())
+        with message.open() as file:
+            feedback, reference = feedback_and_reference(file.read())
+            sent_at = os.fstat(file.fileno()).st_mtime
     except (OSError, ValueError):
         return None
+    found = feedback_line.match(feedback)
     if found is None:
         return None
     state = "read" if message.parent.name == "handled" else "delivered"
-    return Said(int(message.stem), int(found.group(1)), found.group(2), state)
+    return Said(int(message.stem), int(found.group(1)), found.group(2), state, sent_at, reference)
 
 
 def messages(inbox: Path) -> list[Path]:
@@ -67,4 +117,6 @@ def conversation_of(name: str, attempt: int) -> list[Said | Answered]:
 def shown(item: Said | Answered) -> dict:
     if isinstance(item, Answered):
         return {"from": "session", "attempt": item.attempt}
-    return {"from": "gray", "number": item.number, "attempt": item.attempt, "text": item.text, "state": item.state}
+    reference = {} if item.reference is None else {"reference": asdict(item.reference)}
+    return {"from": "reviewer", "number": item.number, "attempt": item.attempt, "text": item.text, "state": item.state,
+            "sent_at": iso_time(item.sent_at)} | reference

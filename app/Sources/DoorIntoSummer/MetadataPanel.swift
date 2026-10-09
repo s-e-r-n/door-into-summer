@@ -9,22 +9,19 @@ private struct Field: Identifiable {
 
 private func fields(of post: Post) -> [Field] {
     let job = post.job
-    let parameter = { (name: String) in job?.parameters[name] ?? "unavailable" }
+    let shown = { (value: String?) in value ?? "unavailable" }
     return [
-        Field(key: "Model", value: job?.model ?? "unavailable"),
-        Field(key: "Variant", value: parameter("variant")),
-        Field(key: "Aspect ratio", value: job?.aspect ?? "unavailable"),
-        Field(key: "Size", value: parameter("size")),
-        Field(key: "Resolution", value: parameter("resolution")),
-        Field(key: "Quality", value: job?.quality ?? "unavailable"),
-        Field(key: "Background", value: parameter("background")),
-        Field(key: "Mode", value: parameter("mode")),
-        Field(key: "Batch", value: job?.batch.map(String.init) ?? "unavailable"),
+        Field(key: "Model", value: shown(job?.model)),
+        Field(key: "Aspect ratio", value: shown(job?.aspect)),
+        Field(key: "Size", value: shown(job?.size)),
+        Field(key: "Resolution", value: shown(job?.resolution)),
+        Field(key: "Quality", value: shown(job?.quality)),
+        Field(key: "Mode", value: shown(job?.mode)),
+        Field(key: "Batch", value: shown(job?.batch.map(String.init))),
         Field(key: "Input", value: post.original == nil ? "none" : "original photo"),
-        Field(key: "Style", value: parameter("style")),
-        Field(key: "Options", value: parameter("options")),
-        Field(key: "Job", value: job?.id ?? "unavailable"),
-        Field(key: "Prompt", value: job?.prompt ?? "unavailable"),
+        Field(key: "Job", value: shown(job?.id)),
+        Field(key: "Created", value: shown(job?.createdAt)),
+        Field(key: "Prompt", value: shown(job?.prompt)),
     ]
 }
 

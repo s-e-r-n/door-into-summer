@@ -1,6 +1,11 @@
 import json
+import os
+import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+
+aspect_ratio = re.compile(r"\A[1-9][0-9]{0,3}:[1-9][0-9]{0,3}\Z")
 
 
 @dataclass(frozen=True)
@@ -21,11 +26,23 @@ class Image:
 
 
 @dataclass(frozen=True)
+class Working:
+    aspect: str
+
+
+@dataclass(frozen=True)
 class Card:
     subject: str
     attempt: int
     original: Image | None
     generation: Image
+    job: str | None
+    working: Working | None
+    at: float
+
+
+def iso_time(seconds: float) -> str:
+    return datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def one_line(label: object) -> bool:
@@ -51,9 +68,17 @@ def read_image(raw: object) -> Image | None:
     return None
 
 
+def read_working(raw: object) -> Working | None:
+    if isinstance(raw, dict) and isinstance(raw.get("aspect"), str) and aspect_ratio.match(raw["aspect"]):
+        return Working(raw["aspect"])
+    return None
+
+
 def read_card(path: Path) -> Card | None:
     try:
-        raw = json.loads(path.read_bytes())
+        with path.open("rb") as file:
+            raw = json.loads(file.read())
+            at = os.fstat(file.fileno()).st_mtime
     except (OSError, ValueError):
         return None
     if not isinstance(raw, dict) or not isinstance(raw.get("subject"), str) or type(raw.get("attempt")) is not int:
@@ -62,7 +87,8 @@ def read_card(path: Path) -> Card | None:
     original = read_image(raw["original"]) if raw.get("original") is not None else None
     if generation is None or (raw.get("original") is not None and original is None):
         return None
-    return Card(raw["subject"], raw["attempt"], original, generation)
+    job = raw["job"] if one_line(raw.get("job")) else None
+    return Card(raw["subject"], raw["attempt"], original, generation, job, read_working(raw.get("working")), at)
 
 
 def shown_image(name: str, slot: str, image: Image | None) -> dict | None:
@@ -74,9 +100,16 @@ def shown_image(name: str, slot: str, image: Image | None) -> dict | None:
 
 
 def shown_card(name: str, card: Card) -> dict:
-    return {"session": name, "subject": card.subject, "attempt": card.attempt,
-            "original": shown_image(name, "original", card.original),
-            "generation": shown_image(name, "generation", card.generation)}
+    shown = {"session": name, "subject": card.subject, "attempt": card.attempt, "at": iso_time(card.at),
+             "original": shown_image(name, "original", card.original),
+             "generation": shown_image(name, "generation", card.generation)}
+    return shown if card.working is None else shown | {"working": {"aspect": card.working.aspect}}
+
+
+def image_location(image: Image | None) -> str | None:
+    if image is None:
+        return None
+    return image.source.url if isinstance(image.source, Linked) else image.source.path
 
 
 def local_path(card: Card, slot: str) -> str | None:

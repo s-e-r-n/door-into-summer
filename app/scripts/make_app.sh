@@ -8,8 +8,9 @@ swift build -c release --product "$product_name" >&2
 bin_path="$(swift build -c release --product "$product_name" --show-bin-path)"
 app_path="$package_root/.build/$display_name.app"
 rm -rf "$app_path"
-mkdir -p "$app_path/Contents/MacOS"
+mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources"
 cp "$bin_path/$product_name" "$app_path/Contents/MacOS/$product_name"
+cp -R "$bin_path/${product_name}_${product_name}.bundle" "$app_path/Contents/Resources/"
 cat > "$app_path/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

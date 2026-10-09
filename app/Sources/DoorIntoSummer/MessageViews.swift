@@ -4,17 +4,10 @@ import SwiftUI
 private let clock = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits)
 
 struct Stamp: View {
-    let at: Date?
+    let at: Date
 
     var body: some View {
-        Group {
-            if let at {
-                Text(at, format: clock).monospacedDigit()
-            } else {
-                Text("time unavailable")
-            }
-        }
-        .foregroundStyle(Color.tertiaryText)
+        Text(at, format: clock).monospacedDigit().foregroundStyle(Color.tertiaryText)
     }
 }
 
@@ -38,6 +31,31 @@ struct SettingsLine: View {
             .foregroundStyle(Color.tertiaryText)
             .padding(.leading, 7)
             .padding(.top, -8)
+    }
+}
+
+struct ReferenceLine: View {
+    let reference: ShownReference
+    let thumbnail: CGFloat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            AsyncImage(url: reference.url) { phase in
+                if case .success(let image) = phase {
+                    image.resizable().scaledToFill()
+                } else {
+                    Color.reviewerRow
+                }
+            }
+            .frame(width: thumbnail, height: thumbnail)
+            .clipped()
+            if let session = reference.session, let attempt = reference.attempt {
+                Text("\(Text("@\(session)").font(.monoItalic)) · image generation \(attempt)").lineLimit(1)
+            } else {
+                Text("job \(reference.job)").lineLimit(1)
+            }
+        }
+        .foregroundStyle(Color.tertiaryText)
     }
 }
 
@@ -79,6 +97,9 @@ struct ReviewerMessageView: View {
                 styled(message.text)
                 Ticks(mark: message.mark)
             }
+            if let reference = message.reference {
+                ReferenceLine(reference: reference, thumbnail: 32)
+            }
         }
     }
 
@@ -97,6 +118,7 @@ struct PostView: View {
     let post: Post
     let inspected: Bool
     let tag: (String) -> Void
+    let reference: () -> Void
     let details: () -> Void
     let validate: () async -> String?
     @State private var validating = false
@@ -108,13 +130,14 @@ struct PostView: View {
                 SessionName(session: post.session, tag: tag)
                 Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText)
                 Spacer()
-                Stamp(at: nil)
+                Stamp(at: post.at)
             }
             SettingsLine(job: post.job)
             Text(post.subject)
             figures
             HStack(spacing: 20) {
                 Button("copy prompt") { copyPrompt() }.disabled(post.job?.prompt == nil)
+                Button("use as reference", action: reference).disabled(post.job == nil)
                 Button("details", action: details).foregroundStyle(inspected ? Color.foreground : Color.tertiaryText)
                 Button(post.validated ? "validated" : "validate") { Task { await validated() } }
                     .disabled(post.validated || validating)
@@ -163,7 +186,6 @@ struct WorkingPostView: View {
                 Spinner(running: running)
                 Text("image generation \(working.attempt)").foregroundStyle(Color.tertiaryText)
                 Spacer()
-                Stamp(at: nil)
             }
             SettingsLine(job: working.job)
             Text(working.subject)
