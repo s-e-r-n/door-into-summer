@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from review import sessions, store, validation
-from review.board import Board
+from review.board import Board, events_between
 from review.changes import watch
 from review.conversation import Reference, parsed_reference, send_feedback
 
@@ -106,7 +106,7 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
                 return
             route, _, query = self.path.partition("?")
             if route == "/cards":
-                self.answer(200, "application/json", json.dumps(board.latest()[1]).encode())
+                self.answer(200, "application/json", json.dumps([*board.latest()[1].values()]).encode())
             elif route == "/events":
                 self.streamed_events()
             elif route.startswith("/image/") and route.count("/") == 3:
@@ -136,17 +136,23 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            version, shown = board.latest()
+            version, sent = board.latest()
             try:
-                self.wfile.write(f"data: {json.dumps(shown)}\n\n".encode())
-                self.wfile.flush()
+                self.pushed("ready", [*sent.values()])
                 while True:
                     latest, shown = board.next_after(version)
-                    self.wfile.write(f"data: {json.dumps(shown)}\n\n".encode() if latest != version else b": alive\n\n")
-                    self.wfile.flush()
-                    version = latest
+                    if latest == version:
+                        self.wfile.write(b": alive\n\n")
+                        self.wfile.flush()
+                    for event, data in events_between(sent, shown):
+                        self.pushed(event, data)
+                    version, sent = latest, shown
             except (BrokenPipeError, ConnectionResetError):
                 return
+
+        def pushed(self, event, data):
+            self.wfile.write(f"event: {event}\ndata: {json.dumps(data)}\n\n".encode())
+            self.wfile.flush()
 
         def served_image(self, name, slot, version):
             path = board.image_path(name, slot, version)

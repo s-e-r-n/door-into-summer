@@ -183,8 +183,21 @@ final class ThreadStore {
         }
     }
 
-    func apply(_ cards: [Card]) {
-        self.cards = cards
+    func apply(_ event: ServerEvent) {
+        switch event {
+        case .ready(let listed):
+            cards = listed
+        case .sessionUpdate(let card):
+            if let index = cards.firstIndex(where: { $0.session == card.session }) {
+                cards[index] = card
+            } else {
+                cards.insert(card, at: 0)
+            }
+        case .sessionDelete(let session):
+            cards.removeAll { $0.session == session }
+        case .lost:
+            return
+        }
         let known = Set(cards.flatMap { card in card.feedbacks.map { "\(card.session)#\($0.number)" } })
         pending.removeAll { sent in sent.number.map { known.contains("\(sent.session)#\($0)") } ?? false }
         reconcile()

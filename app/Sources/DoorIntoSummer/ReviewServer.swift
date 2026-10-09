@@ -187,8 +187,10 @@ struct Validation: Equatable, Sendable, Encodable {
     let attempt: Int
 }
 
-enum Board: Sendable {
-    case cards([Card])
+enum ServerEvent: Sendable {
+    case ready([Card])
+    case sessionUpdate(Card)
+    case sessionDelete(String)
     case lost
 }
 
@@ -206,11 +208,10 @@ struct Frame {
     private var event = ""
     private var data: [String] = []
 
-    mutating func fed(_ line: String, decoder: JSONDecoder) -> [Card]? {
+    mutating func fed(_ line: String, decoder: JSONDecoder) -> ServerEvent? {
         if line.isEmpty {
             defer { self = Frame() }
-            guard event != "page", !data.isEmpty else { return nil }
-            return try? decoder.decode([Card].self, from: Data(data.joined(separator: "\n").utf8))
+            return decoded(by: decoder)
         }
         if line.hasPrefix("event:") {
             event = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
@@ -218,6 +219,16 @@ struct Frame {
             data.append(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
         }
         return nil
+    }
+
+    private func decoded(by decoder: JSONDecoder) -> ServerEvent? {
+        let payload = Data(data.joined(separator: "\n").utf8)
+        switch event {
+        case "ready": return (try? decoder.decode([Card].self, from: payload)).map(ServerEvent.ready)
+        case "session_update": return (try? decoder.decode(Card.self, from: payload)).map(ServerEvent.sessionUpdate)
+        case "session_delete": return (try? decoder.decode(String.self, from: payload)).map(ServerEvent.sessionDelete)
+        default: return nil
+        }
     }
 }
 
@@ -249,7 +260,7 @@ struct ReviewServer: Sendable {
         return try decoder.decode([Card].self, from: data)
     }
 
-    func boards() -> AsyncStream<Board> {
+    func events() -> AsyncStream<ServerEvent> {
         AsyncStream { continuation in
             let task = Task {
                 while !Task.isCancelled {
@@ -263,9 +274,10 @@ struct ReviewServer: Sendable {
         }
     }
 
-    private func streamed(into continuation: AsyncStream<Board>.Continuation) async {
+    private func streamed(into continuation: AsyncStream<ServerEvent>.Continuation) async {
         guard let (bytes, response) = try? await session.bytes(from: address.appending(path: "events")),
               (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+        let decoder = decoder
         var frame = Frame()
         var line: [UInt8] = []
         do {
@@ -277,8 +289,8 @@ struct ReviewServer: Sendable {
                 if line.last == UInt8(ascii: "\r") {
                     line.removeLast()
                 }
-                if let cards = frame.fed(String(decoding: line, as: UTF8.self), decoder: decoder) {
-                    continuation.yield(.cards(cards))
+                if let event = frame.fed(String(decoding: line, as: UTF8.self), decoder: decoder) {
+                    continuation.yield(event)
                 }
                 line = []
             }

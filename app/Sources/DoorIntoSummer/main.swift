@@ -141,6 +141,15 @@ private func line(of spoken: Spoken) -> String {
     }
 }
 
+private func line(of event: ServerEvent) -> String? {
+    switch event {
+    case .ready(let cards): "ready: \(cards.map { "\($0.session) attempt \($0.attempt)" }.joined(separator: ", "))"
+    case .sessionUpdate(let card): "session_update: \(card.session) attempt \(card.attempt)"
+    case .sessionDelete(let session): "session_delete: \(session)"
+    case .lost: nil
+    }
+}
+
 @MainActor
 private func post(of session: String, attempt: Int, in chat: Chat) -> PostModel? {
     chat.thread.post(session: session, attempt: attempt)
@@ -172,9 +181,9 @@ func followed(_ arguments: [String]) async -> Outcome {
     let frames = arguments.count == 2 ? arguments[1] : "1"
     guard let wanted = Int(frames), wanted > 0 else { return .malformed("not a frame count: \(frames)") }
     var seen = 0
-    for await board in ReviewServer(address: url).boards() {
-        guard case .cards(let cards) = board else { break }
-        print("cards: \(cards.map { "\($0.session) attempt \($0.attempt)" }.joined(separator: ", "))")
+    for await event in ReviewServer(address: url).events() {
+        guard let line = line(of: event) else { break }
+        print(line)
         seen += 1
         if seen == wanted { return .succeeded("followed: \(seen) frames") }
     }
