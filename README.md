@@ -88,7 +88,7 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 | `POST /validate` | 409 `{"error", "file"}` | the job is already in store.jsonl; two validations of one job file one image and one line |
 | `POST /validate` | 502 `{"error"}` | the job unread by Higgsfield |
 | `POST /validate` | 502 `{"error"}` | `result_url` not downloaded, or naming no file extension |
-| `POST /validate` | 502 `{"error"}` | a field of the store line missing from the job |
+| `POST /validate` | 502 `{"error"}` | `result_url` missing from the job; the job id and `result_url` are all a validation needs of it |
 | `POST /validate` | 500 `{"error"}` | the temporary file, exiftool, ImageMagick, the rename or the store line failed; the error names the path |
 | `POST /validate` | 400 `{"error"}` | another body |
 | `POST /validate` | any refusal | leaves no file in the gallery |
@@ -228,8 +228,8 @@ reference: <job id> <image url>
 
 ```
 {"job": "<higgsfield job id>", "validated_at": "<ISO 8601>", "session": "<session>", "subject": "<what is generated>",
- "model": "<model>", "parameters": {"ratio": "<w>:<h>", "quality": "<quality>", "resolution": "<resolution>", "batch": <an integer>},
- "prompt": "<prompt>", "original": "<url or path>" | null, "file": "<gallery file name>", "fingerprint": "<16 hex digits>"}
+ "model": "<model>" | null, "parameters": {"ratio": "<w>:<h>", "quality": "<quality>" | null, "resolution": "<resolution>", "batch": <an integer> | null},
+ "prompt": "<prompt>" | null, "original": "<url or path>" | null, "file": "<gallery file name>", "fingerprint": "<16 hex digits>"}
 ```
 
 | Field | Value |
@@ -238,8 +238,9 @@ reference: <job id> <image url>
 | `job` | the card's job id in its 36-character lowercase form; every lookup of a job id, in store.jsonl and for a card's `validated`, compares ids without hyphens and in lowercase |
 | `session`, `subject` | from the card |
 | `validated_at` | the time of the validation, local, with its offset, such as `2026-10-09T10:00:00+02:00` |
-| `model` | the job's `display_name`, as on the card |
-| `parameters`, `prompt` | from the job, as on the card; `ratio` is its `aspect` |
+| `model` | the job's `display_name`, as on the card, null when the job holds none |
+| `parameters`, `prompt` | from the job, as on the card; `ratio` is its `aspect`; `quality`, `batch` and `prompt` are null when the job holds none |
+| `ratio`, `resolution` from the image | where the job holds no `aspect` or no `resolution`, the downloaded image's own pixel size gives it: `ratio` its width and height reduced, such as `3:4`, `resolution` `<width>x<height>`, such as `1536x2048` |
 | `original` | the `url` or `path` of the card's original, null when it has none |
 | `file` | `<YYYY-MM-DD>-<session>-<job>.<ext>` in the gallery: the day of the validation in local time, `ext` from `result_url`; never written over an existing file |
 | `fingerprint` | the image's 64-bit perceptual hash, in hex. ImageMagick exports the first frame as a 32x32 grayscale; a DCT-II keeps its 8x8 lowest frequencies, the constant term included. Each bit tells whether a coefficient, row by row, is above their median; the first bit is the most significant. `--match` passes over a line whose fingerprint is not 16 hex digits |
