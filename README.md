@@ -270,6 +270,7 @@ reference: <job id> <image url>
 | --- | --- |
 | `bin/review_window.py` | the backend |
 | `app/scripts/make_app.sh` | builds `app/.build/Door into Summer.app`, signed ad hoc, with /System/Library/Sounds/Blow.aiff copied into its Resources |
+| `app/AppIcon.icon` | the app icon, an Icon Composer document: the human's illustration as its one layer, which make_app.sh compiles with `xcrun actool` into the bundle's Assets.car and AppIcon.icns |
 | `app/.build/debug/DoorIntoSummer` | the app's command line, built by `swift build --package-path app` |
 | `app/Sources/DoorIntoSummer/Fonts` | JetBrains Mono Thin and Thin Italic, with their OFL license |
 | `app/Tests/` | `swift test --package-path app`: the message parser |
