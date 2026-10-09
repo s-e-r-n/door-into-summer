@@ -10,7 +10,7 @@ from pathlib import Path
 from review import sessions, store, validation
 from review.board import Board
 from review.changes import watch
-from review.conversation import send_feedback
+from review.conversation import Reference, parsed_reference, send_feedback
 
 usage = """Usage:
   review_window.py [<port>] serve the review window on 127.0.0.1:<port>, 8765 by default, 0 for a free one
@@ -34,7 +34,7 @@ def served_page() -> bytes:
     return template.replace(version_slot, f'<meta name="page-version" content="{page_version(template)}">'.encode())
 
 
-def parsed_request(body: bytes) -> tuple[str, int, str] | str:
+def parsed_request(body: bytes) -> tuple[str, int, str, Reference | None] | str:
     try:
         request = json.loads(body)
     except ValueError:
@@ -48,7 +48,10 @@ def parsed_request(body: bytes) -> tuple[str, int, str] | str:
         return "The attempt is the integer the card showed."
     if text.strip() == "":
         return "The text is empty."
-    return session, attempt, text
+    if request.get("reference") is None:
+        return session, attempt, text, None
+    reference = parsed_reference(request["reference"], text)
+    return reference if isinstance(reference, str) else (session, attempt, text, reference)
 
 
 def sent(body: bytes) -> tuple[int, dict]:
