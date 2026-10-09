@@ -16,6 +16,8 @@ export DOOR_INTO_SUMMER_SUPPORT="$support"
 export PYTHONDONTWRITEBYTECODE=1
 failures=0
 job_id="17ab8156-4bd6-4b2f-9bad-1e15463ee4a0"
+job_2="2b6f0c1e-9a4d-4e7b-8c35-0d1f2e3a4b52"
+job_3="3c7a1d2f-0b5e-4f8c-9d46-1e2a3b4c5d63"
 
 expect() {
   if [ "$2" = "$3" ]; then
@@ -39,13 +41,22 @@ shown() {
   mv "$home/data/$1/images.json.tmp" "$home/data/$1/images.json"
 }
 
+until_listed() {
+  for _ in $(seq 50); do
+    "$client" cards "$url" | grep -q "$1" && return 0
+    sleep 0.1
+  done
+}
+
 [ -x "$client" ] || { printf 'FAIL the client is not built: run swift build in app/ first\n'; exit 1; }
 mkdir -p "$home/state" "$home/data" "$root/stub" "$user/.hypnos/bin" "$root/jobs"
 cp "$session_script" "$user/.hypnos/bin/hy-session.sh"
 magick -size 64x48 xc:'#203040' "$root/picture.png"
-jq -n --arg id "$job_id" --arg url "file://$root/picture.png" '{id: $id, display_name: "Grok Image 2.0", status: "completed", created_at: "2026-10-08T21:08:15.551961Z",
-  result_url: $url, params: {aspect_ratio: "4:3", batch_size: 1, quality: "medium", resolution: "1k", width: 64, height: 48, mode: "std", prompt: "a recorded prompt"}}' \
-  > "$root/jobs/$job_id.json"
+for id in "$job_id" "$job_2" "$job_3"; do
+  jq -n --arg id "$id" --arg url "file://$root/picture.png" '{id: $id, display_name: "Grok Image 2.0", status: "completed", created_at: "2026-10-08T21:08:15.551961Z",
+    result_url: $url, params: {aspect_ratio: "4:3", batch_size: 1, quality: "medium", resolution: "1k", width: 64, height: 48, mode: "std", prompt: "a recorded prompt"}}' \
+    > "$root/jobs/$id.json"
+done
 cat > "$root/stub/higgsfield" <<STUB
 #!/usr/bin/env bash
 if [ "\$1 \$2 \$3 \$4" = "generate get --json --" ] && [ -f "$root/jobs/\$5.json" ]; then cat "$root/jobs/\$5.json"; exit 0; fi
@@ -102,9 +113,30 @@ expect "sent_at: each feedback carries its time" "$(printf '%s\n' "$conversation
 expect "reference: the conversation item carries the reference" "$(printf '%s\n' "$conversation" | grep -c " reference $job_id https://example.test/picture.png: @b with image")" "1"
 expect "state: a feedback is delivered until the session moves it" "$(printf '%s\n' "$conversation" | grep -c ' state delivered ')" "3"
 
+shown a 2 "{\"job\": \"$job_2\", \"generation\": {\"label\": \"generation 2\", \"url\": \"https://example.test/2.png\"}}"
+until_listed '^session a attempt 2 '
+"$client" send "$url" "@a y" > /dev/null
+shown a 3 "{\"job\": \"$job_3\", \"generation\": {\"label\": \"generation 3\", \"url\": \"https://example.test/3.png\"}}"
+until_listed '^session a attempt 3 '
+history="$("$client" cards "$url" | awk '/^session /{on = ($2 == "a")} on && /^  /')"
+expect "answers: each attempt is its own item, between the feedbacks, in the order sent" "$(printf '%s\n' "$history" | awk '{print $1, ($1 == "session" ? $3 : $4)}' | paste -sd, -)" "session 1,reviewer 1,session 2,reviewer 2,session 3"
+expect "answers: each attempt carries its own job" "$(printf '%s\n' "$history" | awk '$1 == "session" {print $3, $7}' | paste -sd, -)" "1 $job_id,2 $job_2,3 $job_3"
+expect "answers: each attempt carries its own image" "$(printf '%s\n' "$history" | awk '$1 == "session" && $3 > 1 {print $9}' | paste -sd, -)" "https://example.test/2.png,https://example.test/3.png"
+image_1="$(printf '%s\n' "$history" | awk '$1 == "session" && $3 == 1 {print $9}')"
+
 filed="$("$client" validate "$url" a 1)"
-expect "validate: the client's call answers with a file" "$(printf '%s' "$filed" | sed -n 's/^filed: \(.*\)/\1/p' | grep -cE "^[0-9]{4}-[0-9]{2}-[0-9]{2}-a-$job_id\.png$")" "1"
-expect "validated: true once the job is in the store" "$("$client" cards "$url" | grep '^session a ' | sed -n 's/.* validated \(.*\)$/\1/p')" "true"
+expect "validate: attempt 1, behind the card's attempt 3, files the image of its own job" "$(printf '%s' "$filed" | sed -n 's/^filed: \(.*\)/\1/p' | grep -cE "^[0-9]{4}-[0-9]{2}-[0-9]{2}-a-$job_id\.png$")" "1"
+expect "validated: true on the answer of attempt 1 once its job is in the store" "$("$client" cards "$url" | grep "^  session attempt 1 .* job $job_id " | sed -n 's/.* validated \(.*\)$/\1/p')" "true"
+expect "validated: false on the card, which shows attempt 3" "$("$client" cards "$url" | grep '^session a ' | sed -n 's/.* validated \(.*\)$/\1/p')" "false"
 expect "validate: a second call is refused as already filed" "$("$client" validate "$url" a 1 | cut -c1-9)" "refused: "
+
+taken="$("$client" send "$url" "@a back to this one" a 1)"
+expect "reference: a reference taken on attempt 1 carries attempt 1's job" "$(printf '%s\n' "$taken" | sed -n 's/.* reference \([^ ]*\) .*/\1/p')" "$job_id"
+expect "reference: the inbox file holds attempt 1's job and image" "$(sed -n 2p "$home/state/a.inbox/003.msg")" "reference: $job_id $image_1"
+
+curl -s -H 'Content-Type: application/json' --data '{"session": "b", "attempt": 1, "text": "@b from before"}' "${url}feedback" > /dev/null
+until_listed '^  session attempt 1 at unavailable '
+expect "bare: an attempt the backend never saw decodes, every field unavailable" "$("$client" cards "$url" | sed -n 's/^  session attempt 1 \(at unavailable .*\)/\1/p')" "at unavailable job unavailable image unavailable validated unavailable"
+expect "reference: a post without a job gives none" "$("$client" send "$url" "@b x" b 1)" "No card shows @b image generation 1 with a job."
 
 [ "$failures" -eq 0 ]

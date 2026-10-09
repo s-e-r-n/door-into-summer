@@ -104,6 +104,7 @@ python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for 
 | Kept | its last valid content while its images.json is missing or invalid |
 | Removed | with the meta, which `hy-session.sh close` deletes |
 | Printed | `app/.build/debug/DoorIntoSummer cards <server url>`, as the app decodes it |
+| Posted | one post per session's answer of `conversation[]`, its attempt's `image generation <n>`, between the reviewer's feedbacks in the order of the conversation, the sessions interleaved by time; an answer the backend did not see reads `time unavailable` and `image unavailable` |
 | Shown | `details` on a post opens its metadata panel, `Cmd+B` opens and closes it on the last post opened; a `job` field left out reads `<field> unavailable` |
 
 | Field | Value |
@@ -189,7 +190,7 @@ reference: <job id> <image url>
 | app message | `@a instruction /option @b instruction`: an instruction runs from its `@session` to the next `@` or the end. A `/command` belongs to the instruction it sits in |
 | app line 1 | `feedback · attempt <n>: @<session> <instruction>`, one message per session addressed; `<n>` is the attempt the app showed for that session |
 | app refusal | a message that does not open with `@session`, or names a session that is not live; it stays in the chat bar |
-| from a shell | `app/.build/debug/DoorIntoSummer send <server url> "@a instruction /option @b instruction" [<job> <image url>]` sends one message, with an image reference when a job and an image URL follow, and prints each session's message number |
+| from a shell | `app/.build/debug/DoorIntoSummer send <server url> "@a instruction /option @b instruction" [<job> <image url> \| <session> <attempt>]` sends one message, with an image reference when a job and an image URL follow, or a session and an attempt, whose post gives the reference as `use as reference` does, and prints each session's message number |
 | read | the session moves it to `state/<name>.inbox/handled/` |
 | from a shell, more | `app/.build/debug/DoorIntoSummer cards <server url>` prints the cards as the app decodes them; `DoorIntoSummer validate <server url> <session> <attempt>` files one attempt and prints its file name; `DoorIntoSummer events <server url> [<frames>]` follows `/events` as the app does and prints each frame |
 

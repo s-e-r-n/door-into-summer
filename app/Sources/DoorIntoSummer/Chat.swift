@@ -47,7 +47,7 @@ final class Chat {
             case .cards(let cards):
                 self.cards = cards
                 connection = .live
-                let known = Set(cards.flatMap { card in card.conversation.map { "\(card.session)#\($0.number)" } })
+                let known = Set(cards.flatMap { card in card.feedbacks.map { "\(card.session)#\($0.number)" } })
                 pending.removeAll { sent in sent.number.map { known.contains("\(sent.session)#\($0)") } ?? false }
                 if let inspected, let shown = messages.lazy.compactMap({ if case .post(let post) = $0 { post } else { nil } }).first(where: { $0.id == inspected.id }) {
                     self.inspected = shown
@@ -85,7 +85,7 @@ final class Chat {
                 if let index = pending.firstIndex(where: { $0.id == placed.id }) {
                     pending[index].number = number
                 }
-                if cards.contains(where: { $0.session == instruction.session && $0.conversation.contains { $0.number == number } }) {
+                if cards.contains(where: { $0.session == instruction.session && $0.feedbacks.contains { $0.number == number } }) {
                     pending.removeAll { $0.id == placed.id }
                 }
                 attached = nil
@@ -109,8 +109,8 @@ final class Chat {
     }
 
     func attach(_ post: Post) {
-        guard let job = post.job else { return }
-        attached = ShownReference(job: job.id, url: post.generation.url, session: post.session, attempt: post.attempt)
+        guard let job = post.job, let generation = post.generation else { return }
+        attached = ShownReference(job: job.id, url: generation.url, session: post.session, attempt: post.attempt)
     }
 
     func attach(_ reference: Reference) {

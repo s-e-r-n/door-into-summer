@@ -80,6 +80,41 @@ struct Said: Equatable, Hashable, Sendable, Decodable {
     }
 }
 
+struct Seen: Equatable, Hashable, Sendable, Decodable {
+    let at: Date
+    let original: Picture?
+    let generation: Picture
+    let job: Job?
+    let validated: Bool
+}
+
+struct Answered: Equatable, Hashable, Sendable, Decodable {
+    let attempt: Int
+    let seen: Seen?
+
+    private enum CodingKeys: String, CodingKey {
+        case attempt, at
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        attempt = try container.decode(Int.self, forKey: .attempt)
+        seen = container.contains(.at) ? try Seen(from: decoder) : nil
+    }
+}
+
+enum Spoken: Equatable, Hashable, Sendable {
+    case reviewer(Said)
+    case session(Answered)
+
+    var at: Date? {
+        switch self {
+        case .reviewer(let said): said.sentAt
+        case .session(let answered): answered.seen?.at
+        }
+    }
+}
+
 struct Card: Equatable, Hashable, Sendable, Decodable {
     let session: String
     let subject: String
@@ -87,7 +122,7 @@ struct Card: Equatable, Hashable, Sendable, Decodable {
     let at: Date
     let original: Picture?
     let generation: Picture
-    let conversation: [Said]
+    let conversation: [Spoken]
     let job: Job?
     let working: Working?
     let validated: Bool
@@ -113,18 +148,26 @@ struct Card: Equatable, Hashable, Sendable, Decodable {
         job = try container.decodeIfPresent(Job.self, forKey: .job)
         working = try container.decodeIfPresent(Working.self, forKey: .working)
         validated = try container.decode(Bool.self, forKey: .validated)
-        var said: [Said] = []
+        var spoken: [Spoken] = []
         var items = try container.nestedUnkeyedContainer(forKey: .conversation)
         while !items.isAtEnd {
             var peek = items
             let from = try peek.nestedContainer(keyedBy: ItemKeys.self).decode(String.self, forKey: .from)
             if from == Self.reviewer {
-                said.append(try items.decode(Said.self))
+                spoken.append(.reviewer(try items.decode(Said.self)))
             } else {
-                _ = try items.nestedContainer(keyedBy: ItemKeys.self)
+                spoken.append(.session(try items.decode(Answered.self)))
             }
         }
-        conversation = said
+        conversation = spoken
+    }
+
+    var feedbacks: [Said] {
+        conversation.compactMap { if case .reviewer(let said) = $0 { said } else { nil } }
+    }
+
+    var answers: [Answered] {
+        conversation.compactMap { if case .session(let answered) = $0 { answered } else { nil } }
     }
 }
 

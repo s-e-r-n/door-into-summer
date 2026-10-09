@@ -4,10 +4,10 @@ import SwiftUI
 private let clock = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits)
 
 struct Stamp: View {
-    let at: Date
+    let at: Date?
 
     var body: some View {
-        Text(at, format: clock).monospacedDigit().foregroundStyle(Color.tertiaryText)
+        Text(at?.formatted(clock) ?? "time unavailable").monospacedDigit().foregroundStyle(Color.tertiaryText)
     }
 }
 
@@ -156,7 +156,11 @@ struct PostView: View {
             if let original = post.original {
                 Figure(picture: original, ratio: nil, caption: original.label)
             }
-            Figure(picture: post.generation, ratio: post.job?.ratio, caption: post.original == nil ? nil : post.generation.label)
+            if let generation = post.generation {
+                Figure(picture: generation, ratio: post.job?.ratio, caption: post.original == nil ? nil : generation.label)
+            } else {
+                Text("image unavailable").foregroundStyle(Color.tertiaryText)
+            }
         }
     }
 

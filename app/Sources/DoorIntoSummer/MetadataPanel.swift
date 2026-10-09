@@ -18,7 +18,7 @@ private func fields(of post: Post) -> [Field] {
         Field(key: "Quality", value: shown(job?.quality)),
         Field(key: "Mode", value: shown(job?.mode)),
         Field(key: "Batch", value: shown(job?.batch.map(String.init))),
-        Field(key: "Input", value: post.original == nil ? "none" : "original photo"),
+        Field(key: "Input", value: post.generation == nil ? "unavailable" : post.original == nil ? "none" : "original photo"),
         Field(key: "Job", value: shown(job?.id)),
         Field(key: "Created", value: shown(job?.createdAt)),
         Field(key: "Prompt", value: shown(job?.prompt)),
