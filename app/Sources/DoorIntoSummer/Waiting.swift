@@ -24,7 +24,8 @@ struct Spinner: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: spinnerInterval, paused: !running)) { context in
             Text(spinnerFrames[Int(context.date.timeIntervalSinceReferenceDate / spinnerInterval) % spinnerFrames.count])
-                .foregroundStyle(Color.foreground)
         }
+        .foregroundStyle(Color.foreground)
+        .frame(width: Mono.characterWidth, height: Mono.lineHeight)
     }
 }
