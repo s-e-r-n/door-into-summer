@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import hashlib
 import http.server
 import json
 import mimetypes
@@ -14,26 +13,14 @@ from review.changes import watch
 from review.conversation import Reference, parsed_reference, send_feedback
 
 usage = """Usage:
-  review_window.py [<port>]         serve the review window on 127.0.0.1:<port>, 8765 by default, 0 for a free one
+  review_window.py [<port>]         serve the routes on 127.0.0.1:<port>, 8765 by default, 0 for a free one
   review_window.py --setup          create what is missing of the store structure, then exit
   review_window.py --match <image>  print the store line whose fingerprint is nearest to the image's, within 10 bits
   review_window.py --help           print this usage
 
 The contract an image session writes, the routes, the cards and the store structure are stated in the README."""
-page = Path(__file__).resolve().parent / "review-window.html"
 default_port = 8765
 body_limit = 1 << 20
-retry_ms = 500
-version_slot = b'<meta name="page-version" content="">'
-
-
-def page_version(template: bytes) -> str:
-    return hashlib.sha256(template).hexdigest()[:16]
-
-
-def served_page() -> bytes:
-    template = page.read_bytes()
-    return template.replace(version_slot, f'<meta name="page-version" content="{page_version(template)}">'.encode())
 
 
 def parsed_request(body: bytes) -> tuple[str, int, str, Reference | None] | str:
@@ -118,9 +105,7 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
             if not self.trusted():
                 return
             route, _, query = self.path.partition("?")
-            if route == "/":
-                self.answer(200, "text/html; charset=utf-8", served_page())
-            elif route == "/cards":
+            if route == "/cards":
                 self.answer(200, "application/json", json.dumps(board.latest()[1]).encode())
             elif route == "/events":
                 self.streamed_events()
@@ -153,8 +138,7 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
             self.end_headers()
             version, shown = board.latest()
             try:
-                announced = f"retry: {retry_ms}\nevent: page\ndata: {page_version(page.read_bytes())}\n\n"
-                self.wfile.write(f"{announced}data: {json.dumps(shown)}\n\n".encode())
+                self.wfile.write(f"data: {json.dumps(shown)}\n\n".encode())
                 self.wfile.flush()
                 while True:
                     latest, shown = board.next_after(version)
@@ -180,10 +164,9 @@ def review_handler(board: Board) -> type[http.server.BaseHTTPRequestHandler]:
         def trusted(self):
             port = self.server.server_address[1]
             hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
-            origin = self.headers.get("Origin")
-            if self.headers.get("Host") in hosts and (origin is None or origin in {f"http://{h}" for h in hosts}):
+            if self.headers.get("Host") in hosts and self.headers.get("Origin") is None:
                 return True
-            self.answer(403, "application/json", b'{"error": "Served to this machine\'s own page only."}')
+            self.answer(403, "application/json", b'{"error": "Served to this machine\'s own clients only."}')
             return False
 
         def not_found(self):
