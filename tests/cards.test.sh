@@ -57,6 +57,16 @@ card() {
   curl -s "$url/cards" | jq -c --arg session "$1" '.[] | select(.session == $session)'
 }
 
+answers() {
+  card "$1" | jq -c "[.conversation[] | select(.from == \"session\") | $2]"
+}
+
+stopped() {
+  kill "$server"
+  wait "$server" 2>/dev/null || true
+  server=""
+}
+
 cards_until() {
   for _ in $(seq 50); do
     curl -s "$url/cards" | jq -e "$1" >/dev/null 2>&1 && return 0
@@ -155,17 +165,45 @@ expect "working is dropped when invalid, and the card stays" "$dropped" \
 
 shown mug 2 "{\"job\": \"$recorded_job\"}"
 cards_until '.[] | select(.session == "mug") | .attempt == 2'
-expect "each conversation[] item has from reviewer or session" \
-  "$(card mug | jq -c '[.conversation[].from]') $(curl -s "$url/cards" | jq -c '[.[].conversation[].from] | unique')" \
-  '["reviewer","session"] ["reviewer","session"]'
+expect "each conversation[] item has from reviewer or session: one answer per attempt, before the feedbacks given on it" \
+  "$(card mug | jq -c '[.conversation[] | [.from, .attempt]]') $(curl -s "$url/cards" | jq -c '[.[].conversation[].from] | unique')" \
+  '[["session",1],["reviewer",1],["session",2]] ["reviewer","session"]'
 
 expect "a reviewer item gains sent_at: the mtime of its message file, in ISO 8601" \
-  "$(card mug | jq -c '[.conversation[] | {from} + if has("sent_at") then {sent_at} else {} end]')" \
-  '[{"from":"reviewer","sent_at":"2026-10-09T09:15:00Z"},{"from":"session"}]'
+  "$(card mug | jq -c '[.conversation[] | select(.from == "reviewer") | .sent_at]')" '["2026-10-09T09:15:00Z"]'
 mv "$home/state/chair.inbox/001.msg" "$home/state/chair.inbox/handled/"
-cards_until '.[] | select(.session == "chair") | .conversation[0].state == "read"'
+cards_until '.[] | select(.session == "chair") | .conversation[] | select(.from == "reviewer") | .state == "read"'
 expect "sent_at stays once the session moves the message to handled/" \
-  "$(card chair | jq -c '.conversation[0] | [.state, .sent_at]')" '["read","2026-10-09T09:16:00Z"]'
+  "$(card chair | jq -c '.conversation[] | select(.from == "reviewer") | [.state, .sent_at]')" '["read","2026-10-09T09:16:00Z"]'
+
+live cup
+cp "$root/fixture.png" "$root/second.png"
+printf 'second' >> "$root/second.png"
+first="{\"job\": \"$recorded_job\", \"original\": {\"label\": \"the photo\", \"path\": \"$root/fixture.png\"}, \"generation\": {\"label\": \"generation 1\", \"url\": \"https://example.com/cup-1.png\"}}"
+shown cup 1 "$first" 202610091000.00
+cards_until '.[] | select(.session == "cup") | .attempt == 1'
+shown cup 1 "$(jq -c '. + {working: {aspect: "3:2"}}' <<< "$first")" 202610091005.00
+cards_until '.[] | select(.session == "cup") | has("working")'
+expect "an answer keeps the time of the images.json that first showed its attempt: the write that adds working moves only the card's at" \
+  "$(card cup | jq -r .at) $(answers cup .at)" '2026-10-09T10:05:00Z ["2026-10-09T10:00:00Z"]'
+shown cup 2 "{\"job\": \"$other_job\", \"original\": {\"label\": \"the second photo\", \"path\": \"$root/second.png\"}, \"generation\": {\"label\": \"generation 2\", \"url\": \"https://example.com/cup-2.png\"}}" 202610091010.00
+cards_until '.[] | select(.session == "cup") | .attempt == 2'
+shown cup 3 "{\"generation\": {\"label\": \"generation 3\", \"path\": \"$root/second.png\"}}" 202610091020.00
+cards_until '.[] | select(.session == "cup") | .attempt == 3'
+expect "every attempt the backend saw stays as an answer, with the at, original, generation, job and validated of that attempt" \
+  "$(answers cup '[.attempt, .at, .original.label, (.generation.src | sub("v=[0-9]+$"; "v=<version>")), .job.id, .validated]')" \
+  "$(jq -cn --arg first "$recorded_job" --arg second "$other_job" '[[1, "2026-10-09T10:00:00Z", "the photo", "https://example.com/cup-1.png", $first, false],
+    [2, "2026-10-09T10:10:00Z", "the second photo", "https://example.com/cup-2.png", $second, false],
+    [3, "2026-10-09T10:20:00Z", null, "/image/cup/generation?v=<version>", null, false]]')"
+expect "an answer holds the fields of the card that describe its attempt, job left out when there is none" \
+  "$(answers cup keys_unsorted)" \
+  '[["from","attempt","at","original","generation","job","validated"],["from","attempt","at","original","generation","job","validated"],["from","attempt","at","original","generation","validated"]]'
+expect "the image of a past attempt given by path is served from its own file, through the v of its src" \
+  "$(for src in $(answers cup .original.src | jq -r '.[0:2][]'); do curl -s "$url$src" | md5; done | tr '\n' ' ')" \
+  "$(md5 < "$root/fixture.png") $(md5 < "$root/second.png") "
+expect "without v, the current card's file; a v no attempt has, nothing" \
+  "$(curl -s "$url/image/cup/generation" | md5) $(curl -s -o /dev/null -w '%{http_code}' "$url/image/cup/generation?v=1")" \
+  "$(md5 < "$root/second.png") 404"
 
 shown vase 2 "{\"job\": \"$other_job\"}"
 cards_until ".[] | select(.session == \"vase\") | .job.id == \"$other_job\""
@@ -175,6 +213,23 @@ expect "each call reads the job as JSON" "$(sort -u "$root/calls" | sed 's/ [^ ]
 
 expect "when the read fails, the backend prints one line naming the job and the failure" \
   "$(grep -F "$unknown_job" "$root/served")" "job $unknown_job unread: Error: Job not found"
+
+rm "$home/state/cup.meta"
+cards_until 'all(.[]; .session != "cup")'
+live cup
+cards_until '.[] | select(.session == "cup")'
+expect "a session closed loses its attempts: live again, it keeps only the attempt its images.json shows" "$(answers cup .attempt)" '[3]'
+
+said desk 001 1 'plus large' 202610090917.00
+cards_until '.[] | select(.session == "desk") | .conversation | length == 3'
+expect "while the backend runs, desk keeps the image of both its attempts" \
+  "$(answers desk 'has("generation")')" '[true,true]'
+stopped
+served
+cards_until '.[] | select(.session == "desk")'
+expect "a restart loses the attempts kept: an attempt a feedback names stays an answer without its image, the current one keeps its image" \
+  "$(card desk | jq -c '[.conversation[] | [.from, .attempt, has("generation")]]')" \
+  '[["session",1,false],["reviewer",1,false],["session",2,true]]'
 
 if [ "$failures" = 0 ]; then
   printf 'all cases passed\n'

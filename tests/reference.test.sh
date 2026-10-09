@@ -176,13 +176,14 @@ done
 expect "an invalid reference is refused with 400 and its reason, and nothing reaches the inbox" \
   "$refused $(messages mug)" "$expected 3"
 
-cards_until 'map({(.session): (.conversation | length)}) | add == {"mug": 3, "vase": 1}'
+said='[.conversation[] | select(.from == "reviewer")]'
+cards_until "map({(.session): ($said | length)}) | add == {\"mug\": 3, \"vase\": 1}"
 expect "the conversation item of that message carries reference {job, url}, in /cards and in /events" \
-  "$(card mug | jq -c '.conversation[0].reference') $(card vase | jq -c '.conversation[0].reference') $(pushed mug | jq -c '.conversation[0].reference') $(pushed vase | jq -c '.conversation[0].reference')" \
+  "$(card mug | jq -c "$said[0].reference") $(card vase | jq -c "$said[0].reference") $(pushed mug | jq -c "$said[0].reference") $(pushed vase | jq -c "$said[0].reference")" \
   "$reference $reference $reference $reference"
 
 expect "the item of a message carrying no reference has no reference" \
-  "$(card mug | jq -c '[.conversation[] | has("reference")]') $(pushed mug | jq -c '[.conversation[] | has("reference")]')" \
+  "$(card mug | jq -c "$said | map(has(\"reference\"))") $(pushed mug | jq -c "$said | map(has(\"reference\"))")" \
   '[true,false,false] [true,false,false]'
 
 if [ "$failures" = 0 ]; then

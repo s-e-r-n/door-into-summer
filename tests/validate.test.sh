@@ -29,6 +29,7 @@ table_job="3f6a9d2c-8b1e-4c7a-9e5f-0d2b7c4a6e18"
 bench_job="7c2e5b9f-0a4d-4e1b-8c6f-3a9d1e7b5c24"
 stool_job="a5d8e1c3-6f2b-4a9e-b0c7-4e1f8d2a6b39"
 long_job="17ab81564bd64b2f9bad1e15463ee4a0ffff"
+cup_jobs=(0d3b7e1a-4c9f-4e2b-a8d6-5f1c3e9b7a20 b8e2c5f1-7d3a-4b9e-9c0f-2a6d8e4b1c37 5f9a1d7c-2e4b-4c8a-b6f3-9d0e7a3c5b81)
 
 expect() {
   if [ "$2" = "$3" ]; then
@@ -89,6 +90,11 @@ until_true() {
   printf 'never: %s\n' "$1"
 }
 
+pushed_answers() {
+  sed -n 's/^data: \(\[.*\)$/\1/p' "$root/events" |
+    jq -cs --arg session "$1" --argjson attempt "$2" "map(.[] | select(.session == \$session and .attempt == \$attempt)) | $3 | [.conversation[] | select(.from == \"session\") | $4]"
+}
+
 pushed_validated() {
   sed -n 's/^data: \(\[.*\)$/\1/p' "$root/events" | jq -r --arg session "$1" '.[] | select(.session == $session) | .validated' |
     uniq | tr '\n' ' '
@@ -145,7 +151,8 @@ cat > "$root/recorded.json" <<'JOB'
 JOB
 for each in "$mug_job picture.png" "$next_job picture.png" "$sofa_job picture.png" "$shelf_job picture.png" \
   "$clock_job picture.png" "$frame_job picture.png" "$vase_job smaller.png" "$lamp_job mirrored.png" "$bed_job missing.png" \
-  "$table_job picture.png" "$bench_job picture.png" "$stool_job picture.png" "$long_job picture.png"; do
+  "$table_job picture.png" "$bench_job picture.png" "$stool_job picture.png" "$long_job picture.png" \
+  "${cup_jobs[0]} picture.png" "${cup_jobs[1]} smaller.png" "${cup_jobs[2]} mirrored.png"; do
   job $each
 done
 job "$rug_job" picture.png 'del(.params.prompt)'
@@ -254,9 +261,9 @@ expect "a second call answers 409 with the file name, and files nothing more" \
 printf -- '-- what is refused\n'
 
 expect "404 when the card of session does not show attempt" \
-  "$(posted mug 2 elsewhen) $(answer elsewhen .error)" "404 The card of mug shows attempt 1, not 2."
+  "$(posted mug 2 elsewhen) $(answer elsewhen .error)" "404 No card of mug shows attempt 2."
 expect "404 when the card names no job" "$(posted chair 1) $(answer chair .error)" "404 Attempt 1 of chair names no job."
-expect "404 when no live session shows a card" "$(posted ghost 1) $(answer ghost .error)" "404 No live session ghost shows a card."
+expect "404 when no live session shows a card" "$(posted ghost 1) $(answer ghost .error)" "404 No card of ghost shows attempt 1."
 expect "404 when the card names a job that is not a Higgsfield job id, 32 hexadecimal digits once its hyphens are removed" \
   "$(posted long 1) $(answer long .error) $(filed "$long_job")" "404 The job of long is not a Higgsfield job id, a UUID. 0"
 expect "400 for a body that is not {session, attempt}" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
@@ -333,8 +340,32 @@ printf -- '-- the next attempt\n'
 
 shown mug 2 "{\"job\": \"$next_job\"}"
 until_true '[ "$(card mug | jq .attempt)" = 2 ]'
-expect "validated follows the current attempt: false once the next attempt names a job not in the store" \
-  "$(card mug | jq -c .validated)" false
+expect "validated follows the current attempt: false once the next attempt names a job not in the store, while the answer of attempt 1 stays true" \
+  "$(card mug | jq -c '[.validated, [.conversation[] | select(.from == "session") | [.attempt, .validated]]]')" '[false,[[1,true],[2,false]]]'
+
+printf -- '-- every attempt kept\n'
+
+live cup
+for attempt in 1 2 3; do
+  shown cup "$attempt" "$(jq -cn --arg job "${cup_jobs[attempt - 1]}" --argjson attempt "$attempt" \
+    '{job: $job, generation: {label: "generation \($attempt)", url: "https://d8j0ntlcm91z4.cloudfront.net/user_recorded/hf_cup_\($attempt).png"}}')"
+  until_true "[ \"\$(card cup | jq .attempt)\" = $attempt ]"
+done
+kept="$(jq -cn --args '[$ARGS.positional | to_entries[] | [.key + 1, "https://d8j0ntlcm91z4.cloudfront.net/user_recorded/hf_cup_\(.key + 1).png", .value]]' "${cup_jobs[@]}")"
+expect "a session writes attempts 1, 2 then 3: /cards carries the image URL and the job id of each, one answer per attempt" \
+  "$(card cup | jq -c '[.conversation[] | select(.from == "session") | [.attempt, .generation.src, .job.id]]')" "$kept"
+expect "the next /events frame carries them as well" "$(pushed_answers cup 3 first '[.attempt, .generation.src, .job.id]')" "$kept"
+
+lines_before="$(wc -l < "$support/store.jsonl" | tr -d ' ')"
+status="$(posted cup 1 cup)"
+expect "POST /validate naming attempt 1 while the card shows attempt 3 files attempt 1: one store line, holding the job id of attempt 1" \
+  "$status $(answer cup .file | sed 's/^[0-9-]*-cup-//') $(( $(wc -l < "$support/store.jsonl") - lines_before )) $(tail -1 "$support/store.jsonl" | jq -r '.job')" \
+  "200 ${cup_jobs[0]}.png 1 ${cup_jobs[0]}"
+expect "the gallery file is the result_url of the job of attempt 1" \
+  "$(magick identify -format '%wx%h %#' "$gallery/$(answer cup .file)")" "$(magick identify -format '%wx%h %#' "$root/results/picture.png")"
+until_true '[ "$(pushed_answers cup 3 last .validated)" = "[true,false,false]" ]'
+expect "the next push carries validated: true on the answer of attempt 1, false on the others and on the card" \
+  "$(pushed_answers cup 3 last .validated) $(card cup | jq -c .validated)" "[true,false,false] false"
 
 expect "no temporary file is left in the gallery" "$(ls -A "$gallery" | { grep -c '^\.' || true; })" 0
 

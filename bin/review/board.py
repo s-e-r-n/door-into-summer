@@ -1,25 +1,40 @@
 import threading
+from dataclasses import replace
 
 from review import sessions, store
-from review.cards import Card, local_path, read_card, shown_card
-from review.conversation import conversation_of, shown as shown_item
+from review.cards import Card, local_path, read_card, shown_attempt, shown_card
+from review.conversation import Answered, Said, conversation_of, shown as shown_item
 from review.jobs import shown_job
 
 keepalive_seconds = 15
 
 
-def shown(name: str, card: Card, filed: set[str]) -> dict:
+def job_fields(card: Card, filed: set[str]) -> dict:
     job = shown_job(card.job) if card.job is not None else None
-    conversation = [shown_item(item) for item in conversation_of(name, card.attempt)]
     validated = card.job is not None and store.job_key(card.job) in filed
-    return (shown_card(name, card) | ({} if job is None else {"job": job}) | {"validated": validated}
-            | {"conversation": conversation})
+    return ({} if job is None else {"job": job}) | {"validated": validated}
+
+
+def attempt_fields(name: str, item: Said | Answered, kept: dict[int, Card], filed: set[str]) -> dict:
+    card = kept.get(item.attempt) if isinstance(item, Answered) else None
+    return {} if card is None else shown_attempt(name, card) | job_fields(card, filed)
+
+
+def shown(name: str, card: Card, kept: dict[int, Card], filed: set[str]) -> dict:
+    conversation = [shown_item(item) | attempt_fields(name, item, kept, filed) for item in conversation_of(name, kept)]
+    return shown_card(name, card) | job_fields(card, filed) | {"conversation": conversation}
+
+
+def kept_card(previous: Card | None, card: Card) -> Card:
+    unchanged = previous is not None and replace(card, at=previous.at, working=previous.working) == previous
+    return previous if unchanged else card
 
 
 class Board:
     def __init__(self):
         self.changed = threading.Condition()
         self.cards: dict[str, Card] = {}
+        self.attempts: dict[str, dict[int, Card]] = {}
         self.filed: set[str] = set()
         self.shown: list[dict] = []
         self.version = 0
@@ -30,13 +45,17 @@ class Board:
         except OSError:
             filed = self.filed
         cards = {}
+        attempts = {}
         for name in sessions.live_sessions():
             card = read_card(sessions.images_file(name)) or self.cards.get(name)
             if card is not None:
+                kept = self.attempts.get(name, {})
                 cards[name] = card
-        listed = [shown(name, card, filed) for name, card in cards.items()]
+                attempts[name] = kept | {card.attempt: kept_card(kept.get(card.attempt), card)}
+        listed = [shown(name, card, attempts[name], filed) for name, card in cards.items()]
         with self.changed:
             self.cards = cards
+            self.attempts = attempts
             self.filed = filed
             if listed != self.shown:
                 self.shown = listed
@@ -52,11 +71,12 @@ class Board:
             self.changed.wait_for(lambda: self.version != version, timeout=keepalive_seconds)
             return self.version, self.shown
 
-    def card(self, name: str) -> Card | None:
+    def card(self, name: str, attempt: int) -> Card | None:
         with self.changed:
-            return self.cards.get(name)
+            return self.attempts.get(name, {}).get(attempt)
 
-    def image_path(self, name: str, slot: str) -> str | None:
+    def image_path(self, name: str, slot: str, version: int | None) -> str | None:
         with self.changed:
-            card = self.cards.get(name)
-            return local_path(card, slot) if card is not None else None
+            shown_cards = [self.cards.get(name)] if version is None else [*self.attempts.get(name, {}).values()]
+        paths = (local_path(card, slot, version) for card in shown_cards if card is not None)
+        return next((path for path in paths if path is not None), None)

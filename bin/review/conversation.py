@@ -1,5 +1,6 @@
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -101,17 +102,15 @@ def said_to(name: str) -> list[Said]:
     return [listed[number] for number in sorted(listed)]
 
 
-def conversation_of(name: str, attempt: int) -> list[Said | Answered]:
+def conversation_of(name: str, attempts: Iterable[int]) -> list[Said | Answered]:
+    feedbacks = said_to(name)
+    answered = sorted({*attempts, *(said.attempt for said in feedbacks)})
     spoken: list[Said | Answered] = []
-    latest = None
-    for said in said_to(name):
-        if latest is not None and said.attempt > latest:
-            spoken.append(Answered(said.attempt))
+    for said in feedbacks:
+        while answered and answered[0] <= said.attempt:
+            spoken.append(Answered(answered.pop(0)))
         spoken.append(said)
-        latest = said.attempt if latest is None else max(latest, said.attempt)
-    if latest is not None and attempt > latest:
-        spoken.append(Answered(attempt))
-    return spoken
+    return spoken + [Answered(attempt) for attempt in answered]
 
 
 def shown(item: Said | Answered) -> dict:
