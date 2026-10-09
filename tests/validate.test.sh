@@ -369,11 +369,12 @@ for attempt in 1 2 3; do
   shown cup "$attempt" "$(jq -cn --arg job "${cup_jobs[attempt - 1]}" --argjson attempt "$attempt" \
     '{job: $job, generation: {label: "generation \($attempt)", url: "https://d8j0ntlcm91z4.cloudfront.net/user_recorded/hf_cup_\($attempt).png"}}')"
   until_true "[ \"\$(card cup | jq .attempt)\" = $attempt ]"
+  until_true "[ \"\$(card cup | jq -r .job.id)\" = ${cup_jobs[attempt - 1]} ]"
 done
 kept="$(jq -cn --args '[$ARGS.positional | to_entries[] | [.key + 1, "https://d8j0ntlcm91z4.cloudfront.net/user_recorded/hf_cup_\(.key + 1).png", .value]]' "${cup_jobs[@]}")"
 expect "a session writes attempts 1, 2 then 3: /cards carries the image URL and the job id of each, one answer per attempt" \
   "$(card cup | jq -c '[.conversation[] | select(.from == "session") | [.attempt, .generation.src, .job.id]]')" "$kept"
-expect "the next /events frame carries them as well" "$(pushed_answers cup 3 first '[.attempt, .generation.src, .job.id]')" "$kept"
+expect "the next /events frame carries them as well" "$(pushed_answers cup 3 last '[.attempt, .generation.src, .job.id]')" "$kept"
 
 lines_before="$(wc -l < "$support/store.jsonl" | tr -d ' ')"
 status="$(posted cup 1 cup)"

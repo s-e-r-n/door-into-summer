@@ -131,6 +131,7 @@ said chair 001 1 'plus grand' 202610090916.00
 
 served
 cards_until 'length == 6'
+cards_until '.[] | select(.session == "mug") | has("job")'
 
 expect "a card gains job: {id, model, aspect, quality, batch, resolution, size, mode, prompt, created_at}, from the job named by images.json" \
   "$(card mug | jq -S -c .job)" \

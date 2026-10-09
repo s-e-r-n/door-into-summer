@@ -140,6 +140,7 @@ elsewhere="$!"
 elsewhere_url="$(served_url "$root/elsewhere")"
 [ -n "$elsewhere_url" ] || { printf 'FAIL the other server did not start:\n'; cat "$root/elsewhere"; exit 1; }
 
+until_listed '^session a attempt 1 .* job Grok Image 2.0 '
 expect "cards: the success line closes the cards" "$(outcome cards "$url")" "0 stdout listed: 2 sessions"
 cards="$(cat "$root/out")"
 card_a="$(printf '%s\n' "$cards" | grep '^session a ')"
