@@ -1,75 +1,153 @@
 # door-into-summer
-Door into Summer: a native macOS chat where the reviewer sees each visual an agent session produces, and sends feedback straight to that session.
 
-## App
+Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session generates and sends that session feedback.
 
-```
-app/scripts/make_app.sh
-```
+## Needs
 
-builds `app/.build/Door into Summer.app`, a SwiftUI chat on macOS 26 that is the client of the review server below: it reads `/events` and `/cards`, shows the images it serves, and sends through `/feedback` and `/validate`. One thread holds every live session, ordered by time across sessions: each session's post, `image generation <n>`, at the time of its images.json, and the reviewer's feedbacks at the time they were sent, each with two ticks. Clicking a session's name puts its `@tag` in the chat bar. `details` slides the metadata panel in on the right, 400 px over 220 ms on the curve (0.25, 0.1, 0.25, 1), the thread narrowing on the same curve, and `Cmd+B` opens and closes it on the last post opened. `validate` posts `{"session", "attempt"}` to `/validate` and shows the server's refusal beside it; a validated post reads `validated`. `use as reference` puts the post's image in the chat bar as a chip, with a thumbnail, `@session image generation <n>` and `×`: the next message carries the reference, the job id and the image URL, to every session it addresses, and a message that carried one shows it under its text. The window has no title bar, no traffic lights and no title, opens at two thirds of the screen width, and is dragged by its background. The type is JetBrains Mono Thin and Thin Italic, bundled in the app under `Sources/DoorIntoSummer/Fonts` with their OFL license.
+| Need | Install |
+| --- | --- |
+| Python 3.10 or later | `brew install python` |
+| Swift | `xcode-select --install` |
+| hypnos, at `~/.hypnos` | `git clone https://github.com/s-e-r-n/hypnos.git ~/.hypnos` |
+| Node.js, for `npm` | `brew install node` |
+| `higgsfield` | `npm install -g @higgsfield/cli` |
+| exiftool | `brew install exiftool` |
+| ImageMagick 7, `magick` | `brew install imagemagick` |
+| `jq`, for the tests | ships with macOS 26 |
+| `curl`, for the tests | ships with macOS 26 |
+| `agent-browser`, for `tests/review-window.test.sh` | `npm install -g agent-browser && agent-browser install` |
 
-The chat bar sends one message to several sessions: `@a instruction /option @b instruction`. An `@session` opens an instruction, the next `@` or the end of the message closes it, and a `/command` belongs to the instruction it sits in. Each session receives its own part, tag included, as the feedback line `feedback · attempt <n>: @<session> <instruction>`, where `<n>` is the attempt the chat showed for that session, and the reference line second when the bar held one. A message that does not open with `@session`, or names a session that is not live, is refused under the bar and stays in it.
+## Set up
 
-Typing `@` lists the live sessions, `/` lists the image retouching skills: a skill in `~/.hypnos/skills` whose `SKILL.md` frontmatter holds `door-into-summer: command`, shown by its `name` and `description`. While none qualifies, the menu says so. Arrow keys move the selection, `Enter` or `Tab` complete, `Esc` closes.
+1. Log in to Higgsfield: `higgsfield auth login`.
+2. To file the gallery elsewhere than `~/Pictures/door-into-summer-gallery`, write `~/Library/Application Support/Door into Summer/config.json`: `{"gallery": "<absolute path or ~/path>"}`.
+3. Create the store: `python3 bin/review_window.py --setup`. It prints `created: <path>` for each path it creates and exits 0 once the store is whole.
+4. On exit 1, fix each path it printed, then repeat step 3. A creation the system refused prints `refused: <path>: <reason>` before the startup check lines of [Paths](#paths).
+5. Add this line to the brief of each image session:
 
-A field the job does not carry reads `<field> unavailable`, in the line under a post's header and in the panel. A session whose card carries `working` shows a spinner beside its name and an invisible skeleton at the announced ratio, with an ASCII shape drawn at random among a cube, a double helix and a tetrahedron; both stop while the server does not answer. Images are drawn 810 px tall from the full image the server serves, scaled only by the drawing, and one wider than the thread scales down to the thread width.
+   ```
+   Move each feedback message to handled/ as soon as you have read it, before you generate the next attempt.
+   ```
 
-```
-app/.build/debug/DoorIntoSummer send <server url> "@a instruction /option @b instruction" [<job> <image url>]
-app/.build/debug/DoorIntoSummer cards <server url>
-app/.build/debug/DoorIntoSummer validate <server url> <session> <attempt>
-```
+6. To offer a skill as a `/` command, add `door-into-summer: command` to the frontmatter of its `SKILL.md` in `~/.hypnos/skills`. The list shows its `name` and `description`.
 
-run the chat's own code from the command line: `send` sends one message, with an image reference when a job and a URL follow, and prints each session's message number; `cards` prints the cards as the chat decodes them; `validate` files one attempt and prints its file name.
+## Run
 
-### App tests
+1. Start the backend: `python3 bin/review_window.py`. It prints `serving: http://127.0.0.1:8765/`, the address the app reads. On a startup check line, go back to Set up step 3.
+2. Build the app: `app/scripts/make_app.sh`.
+3. Open the app: `open "app/.build/Door into Summer.app"`.
 
-```
-swift test --package-path app
-app/Tests/chat-client.test.sh
-```
+## Use
 
-`swift test` covers the multi-session message parser alone. `chat-client.test.sh` proves each line of the backend contract the chat reads, through the command line above, against a sandbox under `$TMPDIR`: a scratch `HYPNOS_HOME`, `HOME` and `DOOR_INTO_SUMMER_SUPPORT` set up with `--setup`, a fake `higgsfield` and a fake `herdr` first on `PATH`, and a copy of `~/.hypnos/bin/hy-session.sh`. It runs offline after `swift build --package-path app` and needs `jq`, exiftool and ImageMagick.
+1. Address a session: in the chat bar, type `@`, pick a live session, type its instruction, send. Each further `@` in the message addresses another session. Pick with the arrow keys, then `Enter` or `Tab`; `Esc` closes the list. Clicking a session's name in the thread inserts its `@tag`.
+2. Add a `/` command: type `/` inside an instruction and pick a skill.
+3. Validate: click `validate` on the session's post, `image generation <n>`. Once filed, the post reads `validated`; a refusal shows beside the button.
+4. Use as reference: click `use as reference` on a post. The next message sent carries its job id and image URL to every session it addresses. `×` on its chip in the chat bar, `@session image generation <n>`, drops it.
+5. Find the job of an image, a resized or color-graded copy included: `python3 bin/review_window.py --match <image>`. It needs no running server. A black and white copy can go untraced.
 
-## Review server
+   ```
+   exit 0   the nearest store line as JSON, then distance: <n>, the bits of 64 that differ
+   exit 1   no match within 10 bits: the image was never validated
+   exit 2   unreadable: <path>: <reason>, on stderr
+   ```
 
-```
-python3 bin/review_window.py
-```
+## Reference
 
-It serves the review page on `http://127.0.0.1:8765/`, and the app reads its routes at that address. `python3 bin/review_window.py <port>` takes another port, `0` a free one, and it prints `serving: http://127.0.0.1:<port>/` once bound. Python 3.10 or later, standard library only, macOS, since it learns of every change on disk from a kqueue. Validation needs two tools beside it: exiftool, installed by `brew install exiftool`, which writes the job id into the image, and ImageMagick 7, `magick`, which exports the grayscale the fingerprint is computed from.
-
-It reads the sessions of hypnos under `${HYPNOS_HOME:-~/.hypnos}` and writes nothing there itself: the only contact is
-
-```
-~/.hypnos/bin/hy-session.sh send <session> "feedback · attempt <n>: <text>"
-```
-
-where `<n>` is the attempt the card showed when the feedback was written. A feedback that carries an image reference adds it as a second line, stated under Feedback message.
-
-### Cards
-
-One card per live session, a session whose `state/<name>.meta` exists, that has written a valid `data/<name>/images.json`, newest session first. A card keeps its last valid content while its images.json is missing or half written, and goes once the meta is gone, when `hy-session.sh close` deletes it. It shows its original on the left and its generation on the right, or its generation alone on the left, and under them the conversation with its session. Enter sends, Shift+Enter breaks the line. The page holds one server-sent event stream: a new attempt replaces the title and the images of the same card. A push never moves the focus, the caret or the scroll, and the text typed in any box stays. When the server stops answering, one line says so, and the page reconnects on its own. The page carries a version of its HTML, and `/events` announces the version the server serves now: when they differ, the page reloads itself, keeping the text typed in each box, the focus, the caret and the scroll. The page sets no background, so the window shows through, with light text and a dark color-scheme.
-
-### Conversation
-
-The reviewer's feedbacks are bubbles on the right, in the order they were sent. Each carries two ticks, grey until:
-
-- the first: the message is in `state/<name>.inbox/`;
-- the second: the session moved it to `state/<name>.inbox/handled/`, it has read it.
-
-The session's answer is a bubble on the left, `attempt <n>`, once images.json reaches an attempt later than the one the feedbacks before it were given on. Every bubble and tick is read from the inbox and the current images.json, so a restart of the server or a reload of the page loses none. A send the server could not answer puts its text back in the box; once that message shows as a bubble all the same, the page clears the box, unless the text was edited since.
-
-The second tick means read only if the image session moves a feedback to `handled/` as soon as it reads it, before generating. Its brief carries this line:
+### Routes
 
 ```
-Move each feedback message to handled/ as soon as you have read it, before you generate the next attempt.
+python3 bin/review_window.py           serving: http://127.0.0.1:8765/
+python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for a free one
 ```
+
+| Route | Answer |
+| --- | --- |
+| `GET /` | the review page, `bin/review-window.html` |
+| `GET /events` | server-sent events: `event: page` with the version of the page served, then the cards at once and at each change |
+| `GET /cards` | the cards once, as JSON |
+| `GET /image/<name>/<slot>` | the file of an image given by `path`, `<slot>` `original` or `generation` |
+| `POST /feedback` | takes `{"session", "attempt", "text", "reference"}`, `reference` `{"job", "url"}`, left out or null without an image reference; writes the inbox message |
+| `POST /validate` | takes `{"session", "attempt"}`; files the image of that attempt in the gallery and its line in store.jsonl |
+
+| Route | Status | When |
+| --- | --- | --- |
+| any | 403 | a Host other than `127.0.0.1:<port>` or `localhost:<port>`, or another Origin |
+| any | 404 | an unknown route |
+| `GET /image/<name>/<slot>` | 404 | no local image in that slot |
+| `POST` | 415 | a body other than `application/json` |
+| `POST` | 413 | a body outside 1 byte to 1 MiB |
+| `POST /feedback` | 200 `{"number"}` | the message is in the inbox, the doorbell rung or not |
+| `POST /feedback` | 422 `{"error"}` | `hy-session.sh send` refused; the error is its refusal |
+| `POST /feedback` | 400 `{"error"}` | a `job` or a `url` that is not one word of printable ASCII |
+| `POST /feedback` | 400 `{"error"}` | a `url` that is not an http or https URL with a host |
+| `POST /feedback` | 400 `{"error"}` | a `text` of more than one line beside a `reference` |
+| `POST /feedback` | 400 `{"error"}` | another body |
+| `POST /validate` | 200 `{"file"}` | the image is in the gallery and its line in store.jsonl |
+| `POST /validate` | 404 `{"error"}` | no card of `session` shows `attempt` |
+| `POST /validate` | 404 `{"error"}` | the card names no job, or a job holding a `/` or a NUL |
+| `POST /validate` | 409 `{"error", "file"}` | the job is already in store.jsonl; two validations of one job file one image and one line |
+| `POST /validate` | 502 `{"error"}` | the job unread by Higgsfield |
+| `POST /validate` | 502 `{"error"}` | `result_url` not downloaded, or naming no file extension |
+| `POST /validate` | 502 `{"error"}` | a field of the store line missing from the job |
+| `POST /validate` | 500 `{"error"}` | the temporary file, exiftool, ImageMagick, the rename or the store line failed; the error names the path |
+| `POST /validate` | 400 `{"error"}` | another body |
+| `POST /validate` | any refusal | leaves no file in the gallery |
+
+### Card
+
+```
+{"session", "subject", "attempt", "at", "original", "generation", "working", "job", "validated", "conversation"}
+```
+
+| Card | Rule |
+| --- | --- |
+| One per | live session, whose `state/<name>.meta` exists, once it has written a valid images.json |
+| Order | newest session first |
+| Kept | its last valid content while its images.json is missing or invalid |
+| Removed | with the meta, which `hy-session.sh close` deletes |
+| Printed | `app/.build/debug/DoorIntoSummer cards <server url>`, as the app decodes it |
+| Shown | `details` on a post opens its metadata panel, `Cmd+B` opens and closes it on the last post opened; a `job` field left out reads `<field> unavailable` |
+
+| Field | Value |
+| --- | --- |
+| `session` | the session's name |
+| `subject`, `attempt` | from images.json |
+| `at` | the mtime of images.json, ISO 8601 UTC to the second, such as `2026-10-09T08:30:00Z`; the write that adds `working` moves it |
+| `original` | `{"label", "src"}`, null without an original |
+| `generation` | `{"label", "src"}` |
+| `src` | the image's `url`, or `/image/<name>/<slot>?v=<version>` for a `path` |
+| `working` | `{"aspect": "<w>:<h>"}` from images.json, absent otherwise |
+| `job` | `{"id", "model", "aspect", "quality", "batch", "resolution", "size", "mode", "prompt", "created_at"}`, read once per id by `higgsfield generate get --json -- <id>` and kept until the backend stops; absent when images.json names none or the read failed, which prints `job <id> unread: <failure>` once on stderr |
+| `validated` | true when the job shown is in store.jsonl, false otherwise; the push after a new store line carries it |
+| `conversation` | the reviewer's feedbacks and the session's answers, in the order sent |
+
+| `job` field | From the Higgsfield job, left out when missing or of another type |
+| --- | --- |
+| `id` | the job id |
+| `model` | `display_name` |
+| `aspect` | `params.aspect_ratio` |
+| `quality` | `params.quality` |
+| `batch` | `params.batch_size`, an integer |
+| `resolution` | `params.resolution` |
+| `size` | `<width>x<height>`, from `params.width` and `params.height` |
+| `mode` | `params.mode` |
+| `prompt` | `params.prompt` |
+| `created_at` | `created_at`, as Higgsfield gives it |
+
+| `conversation[]` item | Shape |
+| --- | --- |
+| a reviewer's feedback | `{"from": "reviewer", "number", "attempt", "text", "state", "sent_at", "reference"}` |
+| a session's answer | `{"from": "session", "attempt"}`, once images.json reaches an attempt later than the one the feedbacks before it were given on |
+
+| Feedback field | Value |
+| --- | --- |
+| `number` | the `<NNN>` of its message file |
+| `attempt`, `text` | from its feedback line |
+| `state` | `delivered` in `state/<name>.inbox/`, the first tick; `read` in `state/<name>.inbox/handled/`, the second |
+| `sent_at` | the mtime of its message file, kept by the move to `handled/`, in the form of `at` |
+| `reference` | `{"job", "url"}` from its second line, absent without one |
 
 ### images.json
-
-The contract an image session writes at `${HYPNOS_HOME}/data/<name>/images.json`, whole, by renaming a finished file over it, and again at each attempt:
 
 ```
 {"subject": "<what is generated>", "attempt": <an integer>,
@@ -78,56 +156,38 @@ The contract an image session writes at `${HYPNOS_HOME}/data/<name>/images.json`
  "job": "<higgsfield job id>", "working": {"aspect": "<w>:<h>"}}
 ```
 
-`original` is left out, or null, when the generation starts from no photo. `url` is what the page puts in `img src`, such as the `result_url` of a generation; `path` is a local image file the server serves. `job` names the Higgsfield job of the generation shown, and is left out when there is none. `working` is written the moment the session starts the next generation, with the ratio it asked for, and the next attempt's images.json, written without it, ends it. A file of any other shape leaves the card as it was, except a `job` that is not a one-line string and a `working` whose aspect is not two positive integers of at most 4 digits: each is dropped, and the rest of the card shows.
+| Field | Rule |
+| --- | --- |
+| file | `${HYPNOS_HOME}/data/<name>/images.json`, written by the image session at each attempt, whole, by renaming a finished file over it |
+| `original` | left out or null when the generation starts from no photo |
+| `url` | an image URL, such as the `result_url` of a generation |
+| `path` | a local image file, served at `/image/<name>/<slot>` |
+| `job` | the Higgsfield job of the generation shown, left out when there is none |
+| `working` | written when the session starts the next generation, with the ratio it asked for; the next attempt's images.json, written without it, ends it |
+| invalid file | the card stays as it was |
+| invalid `job` | a `job` that is not a one-line string is dropped; the rest of the card shows |
+| invalid `working` | a `working` whose aspect is not two positive integers of at most 4 digits is dropped; the rest of the card shows |
 
-### Feedback message
-
-The contract an image session reads in its inbox, `state/<name>.inbox/<NNN>.msg`, one file per feedback:
+### Inbox message
 
 ```
 feedback · attempt <n>: <text>
 reference: <job id> <image url>
 ```
 
-The first line is the feedback. The second line is there only when the feedback carries an image reference: `<job id>` names the Higgsfield job of that image and `<image url>` is its http or https URL, each one word of printable ASCII. A feedback carrying a reference holds its text on one line, so the reference is always the second line. Without a reference, the file is the first line alone.
+| Part | Rule |
+| --- | --- |
+| file | `state/<name>.inbox/<NNN>.msg`, one per feedback |
+| line 1 | the feedback; `<n>` is the attempt the card showed when it was written |
+| line 2 | only with an image reference: `<job id>` the Higgsfield job of the image, `<image url>` its http or https URL, each one word of printable ASCII; `<text>` then holds one line |
+| written by | `~/.hypnos/bin/hy-session.sh send <session> "feedback · attempt <n>: <text>"`, the backend's only write into hypnos |
+| app message | `@a instruction /option @b instruction`: an instruction runs from its `@session` to the next `@` or the end. A `/command` belongs to the instruction it sits in |
+| app line 1 | `feedback · attempt <n>: @<session> <instruction>`, one message per session addressed; `<n>` is the attempt the app showed for that session |
+| app refusal | a message that does not open with `@session`, or names a session that is not live; it stays in the chat bar |
+| from a shell | `app/.build/debug/DoorIntoSummer send <server url> "@a instruction /option @b instruction" [<job> <image url>]` sends one message, with an image reference when a job and an image URL follow, and prints each session's message number |
+| read | the session moves it to `state/<name>.inbox/handled/` |
 
-### Routes
-
-Answered on 127.0.0.1 only, to a Host of `127.0.0.1:<port>` or `localhost:<port>`, and to no other Origin.
-
-- `GET /` the page, `bin/review-window.html`
-- `GET /events` the cards at once, then at each change, as server-sent events
-- `GET /cards` the same cards, once, as JSON
-- `GET /image/<name>/<slot>` the file of an image given by path, slot `original` or `generation`
-- `POST /feedback` `{"session", "attempt", "text", "reference"}` as JSON, at most 1 MiB, `reference` `{"job", "url"}` left out or null for a feedback with no image reference: 200 `{"number"}` once the message is in the inbox, the doorbell rung or not, 422 with the refusal of `hy-session.sh send`, 400 with its reason for another body, an invalid reference included: a job or a url that is not one word of printable ASCII, a url that is not an http or https URL with a host, or a text of more than one line beside the reference
-- `POST /validate` `{"session", "attempt"}` as JSON, at most 1 MiB: files the image of that attempt, as told under Validation. 200 `{"file"}` once it is in the gallery and its line in the store, 404 when the card of `session` does not show `attempt`, names no job, or names one no file name can hold, with a `/` or a NUL, 409 `{"error", "file"}` when the job is already in the store, 502 naming a Higgsfield failure, 500 naming the path that refused the write, 400 for another body
-
-A card, on both `/events` and `/cards`:
-
-```
-{"session", "subject", "attempt", "at", "original", "generation", "working", "job", "validated", "conversation"}
-```
-
-- `at` the mtime of images.json, in ISO 8601, UTC to the second, such as `2026-10-09T08:30:00Z`, so the write that adds `working` moves it too.
-- `working` `{"aspect": "<w>:<h>"}`, passed through from images.json, absent otherwise.
-- `job` `{"id", "model", "aspect", "quality", "batch", "resolution", "size", "mode", "prompt", "created_at"}`, read by `higgsfield generate get --json -- <id>`: `model` is its `display_name`, `size` is `<width>x<height>`, `created_at` is as Higgsfield gives it, and the others come from its `params`, `aspect_ratio`, `quality`, `batch_size`, `resolution`, `mode`, `prompt`. A field the job does not carry with its type is left out. The server reads each job id once and keeps the answer in memory until it stops, a failed read included: a failed read prints `job <id> unread: <failure>` once, and the card shows no `job`. `job` is absent when images.json names none.
-- `validated` true when the job of the attempt shown is in the store, false otherwise. It follows store.jsonl, so the push that follows a new line carries it.
-- `conversation[]` the reviewer's feedbacks, `{"from": "reviewer", "number", "attempt", "text", "state", "sent_at", "reference"}`, `sent_at` the mtime of the message file, which the move to `handled/` keeps, `reference` `{"job", "url"}` read from the second line of the message file and absent when it has none, and the session's answers, `{"from": "session", "attempt"}`.
-
-### Store
-
-What the reviewer validates is kept outside the repository, in a structure the backend needs whole before it serves:
-
-```
-~/Library/Application Support/Door into Summer/
-  config.json      {"gallery": "~/Pictures/door-into-summer-gallery"}
-  store.jsonl      one line per validated job, append only
-~/Pictures/door-into-summer-gallery/      the gallery, at the path config.json names
-```
-
-`DOOR_INTO_SUMMER_SUPPORT` moves the Application Support directory, for tests. The gallery moves through config.json, whose `gallery` is an absolute path or one starting with `~/`. The gallery is one flat directory, the validated images side by side.
-
-store.jsonl holds one JSON object per line. A line is written whole or not at all, and never edited:
+### Store line
 
 ```
 {"job": "<higgsfield job id>", "validated_at": "<ISO 8601>", "session": "<session>", "subject": "<what is generated>",
@@ -135,67 +195,49 @@ store.jsonl holds one JSON object per line. A line is written whole or not at al
  "prompt": "<prompt>", "original": "<url or path>" | null, "file": "<gallery file name>", "fingerprint": "<16 hex digits>"}
 ```
 
-`original` is the `url` or `path` of the card's original, null when it has none. `model` is the job's `display_name`, as on the card. `validated_at` is the time of the validation in local time with its offset, such as `2026-10-09T10:00:00+02:00`. `file` is the name of the image in the gallery, `<YYYY-MM-DD>-<session>-<job>.<ext>`, and `fingerprint` its 64-bit perceptual hash, in hex.
+| Field | Value |
+| --- | --- |
+| line | one JSON object per validated job in store.jsonl, written whole or not at all, never edited |
+| `job`, `session`, `subject` | from the card |
+| `validated_at` | the time of the validation, local, with its offset, such as `2026-10-09T10:00:00+02:00` |
+| `model` | the job's `display_name`, as on the card |
+| `parameters`, `prompt` | from the job, as on the card; `ratio` is its `aspect` |
+| `original` | the `url` or `path` of the card's original, null when it has none |
+| `file` | `<YYYY-MM-DD>-<session>-<job>.<ext>` in the gallery: the day of the validation in local time, `ext` from `result_url`; never written over an existing file |
+| `fingerprint` | the image's 64-bit perceptual hash, in hex. ImageMagick exports the first frame as a 32x32 grayscale; a DCT-II keeps its 8x8 lowest frequencies, the constant term included. Each bit tells whether a coefficient, row by row, is above their median; the first bit is the most significant. `--match` passes over a line whose fingerprint is not 16 hex digits |
+| image | `result_url` at full resolution, with the job id written whole by exiftool, pixels untouched, into IPTC `OriginalTransmissionReference` (IIM 2:103, the Job Identifier, bounded to 32 bytes, 36 written) and XMP `photoshop:TransmissionReference` |
+| written by | `POST /validate`, the only way into the gallery; from a shell, `app/.build/debug/DoorIntoSummer validate <server url> <session> <attempt>`, which prints the file name |
 
-At startup the backend checks config.json, store.jsonl and the gallery. While one of them is not usable it serves nothing: it prints one line per path on stderr and exits 1.
+### Paths
 
-- `missing: <path>` the path does not exist. While config.json is missing, the gallery checked is its default.
-- `unreadable: <path>` config.json is not a JSON object whose `gallery` is an absolute path or one starting with `~/`.
-- `unwritable: <path>` store.jsonl is not a file the backend can read and append to, or the gallery is not a directory it can write into.
+| hypnos path | Holds |
+| --- | --- |
+| `${HYPNOS_HOME:-~/.hypnos}` | the sessions, read by the backend |
+| `state/<name>.meta` | one live session |
+| `data/<name>/images.json` | its images.json |
+| `state/<name>.inbox/` | its unread inbox messages |
+| `state/<name>.inbox/handled/` | its read inbox messages |
+| `~/.hypnos/bin/hy-session.sh` | `send` writes an inbox message, `close` deletes the meta |
+| `~/.hypnos/skills` | the skills offered as `/` commands |
 
-```
-python3 bin/review_window.py --setup
-```
+| Store path | Holds | `--setup` creates it, when missing, as | Startup check: one line on stderr, then exit 1 |
+| --- | --- | --- | --- |
+| `~/Library/Application Support/Door into Summer/` | config.json and store.jsonl; `DOOR_INTO_SUMMER_SUPPORT` moves it | a directory | |
+| `config.json` | the gallery's path, absolute or starting with `~/` | `{"gallery": "~/Pictures/door-into-summer-gallery"}` | `missing: <path>`, or `unreadable: <path>` when not a JSON object whose `gallery` is absolute or starts with `~/` |
+| `store.jsonl` | one store line per validated job, append only | an empty file | `missing: <path>`, or `unwritable: <path>` when not a file the backend can read and append to |
+| `~/Pictures/door-into-summer-gallery/` | the gallery, at the path config.json names: one flat directory of validated images | a directory, with each missing parent | `missing: <path>`, checked at its default while config.json is missing, or `unwritable: <path>` when not a directory the backend can write into |
 
-creates each missing piece with its default, in this order: the Application Support directory, config.json as above, an empty store.jsonl, then the gallery config.json names, with each missing parent. It prints `created: <path>` for each creation and changes nothing that exists. It exits 0 once the structure is whole. Otherwise it prints `refused: <path>: <reason>` for a creation the system refused, then what is left in the lines of the startup check, and exits 1. To file the gallery elsewhere, write config.json before running it.
-
-### Validation
-
-`POST /validate` is the only way an image reaches the gallery. For the card of `session` that shows `attempt` and names a job the store does not hold yet, the backend:
-
-1. reads the job with `higgsfield generate get --json`;
-2. downloads its `result_url`, the image at full resolution, to a hidden temporary file in the gallery;
-3. writes the job id, with exiftool, which never re-encodes the pixels, into IPTC `OriginalTransmissionReference` (IIM 2:103, the Job Identifier) and into XMP `photoshop:TransmissionReference`, the form Adobe applications read;
-4. computes the fingerprint: ImageMagick exports the first frame as a 32x32 grayscale, a DCT-II in the standard library keeps its 8x8 lowest frequencies, the constant term included, and each bit tells whether a coefficient is above their median, row by row, the first bit the most significant;
-5. renames the file to `<YYYY-MM-DD>-<session>-<job>.<ext>`, the day of the validation in local time and `ext` from `result_url`, never over a file already there;
-6. appends the store line and answers 200 `{"file"}`.
-
-IIM bounds 2:103 to 32 bytes and a Higgsfield job id holds 36: the id is written whole all the same, so both fields read back the same id.
-
-A failure before the image is in hand, the job unread, `result_url` not downloaded, or a job lacking a field of the store line, answers 502. A failure after it, the temporary file, exiftool, ImageMagick, the rename or the store line, answers 500 naming the path. A refusal leaves nothing behind: the temporary file goes, and so does the renamed image whose line the store did not take. The check that the store does not hold the job yet runs again inside the append, under its lock, so two validations of one job file one image and one line.
-
-### Match
-
-```
-python3 bin/review_window.py --match <image>
-```
-
-traces an image back to its store line, a resized or color-graded copy included. It computes the fingerprint of `<image>` as validation does, compares it with the fingerprint of every line of store.jsonl that holds 16 hex digits, and prints the nearest line as JSON, then `distance: <n>`, the number of bits of 64 in which the two fingerprints differ, and exits 0. Beyond 10 bits it prints `no match within 10 bits` and exits 1: the image was never validated. It reads store.jsonl and nothing else, so it needs no running server and no startup check. An image or a store.jsonl it cannot read prints `unreadable: <path>: <reason>` on stderr and exits 2.
-
-On ten images measured, photographs and illustrations, a resize, a JPEG export, a change of brightness of up to 20 %, of saturation of up to 30 %, of levels or gamma, and a hue shift of up to 18 degrees each stayed within 10 bits, while any two of the ten differed by 24 bits or more. A black and white conversion and a hue shift of 36 degrees each reached 14 bits on one of them, and can go untraced.
-
-## Tests
-
-```
-tests/review-window.test.sh
-```
-
-Headless, through agent-browser, in a sandbox `HYPNOS_HOME` under `$TMPDIR`. It needs `agent-browser`, `jq`, `curl` and `~/.hypnos/bin/hy-session.sh`, and stands in for an image session only through the files it writes.
-
-```
-tests/validate.test.sh
-```
-
-`POST /validate` in a sandbox under `$TMPDIR`: its own `HYPNOS_HOME`, Application Support directory and gallery, and a fake `higgsfield` first on `PATH` that answers recorded jobs whose `result_url` is a local file. It runs offline and needs `jq`, `curl`, exiftool and ImageMagick.
-
-```
-tests/match.test.sh
-```
-
-`--match` on images filed by `POST /validate`, on resized and color-graded copies of them, and on an unrelated image, in a sandbox like the one of validate.test.sh. Offline, it needs `jq`, `curl`, exiftool and ImageMagick.
-
-```
-tests/reference.test.sh
-```
-
-The image reference of a feedback, through `POST /feedback`, the inbox files, `/cards` and `/events`. Offline, in a sandbox under `$TMPDIR`: a scratch `HYPNOS_HOME`, `HOME` and `DOOR_INTO_SUMMER_SUPPORT`, a fake `higgsfield` and a fake `herdr` first on `PATH`, and a copy of `~/.hypnos/bin/hy-session.sh` that the server runs from the scratch `HOME`. It needs `jq`, `curl` and `~/.hypnos/bin/hy-session.sh`.
+| Repository path | Holds |
+| --- | --- |
+| `bin/review_window.py` | the backend |
+| `bin/review-window.html` | the review page |
+| `app/scripts/make_app.sh` | builds `app/.build/Door into Summer.app` |
+| `app/.build/debug/DoorIntoSummer` | the app's command line, built by `swift build --package-path app` |
+| `app/Sources/DoorIntoSummer/Fonts` | JetBrains Mono Thin and Thin Italic, with their OFL license |
+| `app/Tests/` | `swift test --package-path app`: the message parser |
+| `app/Tests/chat-client.test.sh` | each line of the backend contract the app reads, through its command line |
+| `tests/review-window.test.sh` | the review page, headless through agent-browser |
+| `tests/validate.test.sh` | `POST /validate` |
+| `tests/match.test.sh` | `--match` |
+| `tests/reference.test.sh` | the image reference of a feedback |
+| `$TMPDIR` | each test's sandbox: a scratch `HYPNOS_HOME`, `HOME` and `DOOR_INTO_SUMMER_SUPPORT`, with fakes of `higgsfield` and `herdr` first on `PATH` |
