@@ -86,7 +86,7 @@ struct Row<Content: View>: View {
 }
 
 struct ReviewerMessageView: View {
-    let message: ReviewerMessage
+    let message: ReviewerModel
 
     var body: some View {
         Row(highlighted: true, inset: false) {
@@ -118,19 +118,15 @@ struct ReviewerMessageView: View {
 }
 
 struct PostView: View {
-    let post: Post
-    let inspected: Bool
-    let tag: (String) -> Void
-    let reference: () -> Void
-    let details: () -> Void
-    let validate: () async -> String?
+    let post: PostModel
+    @Environment(Chat.self) private var chat
     @State private var validating = false
     @State private var refusal: String?
 
     var body: some View {
-        Row(highlighted: false, inset: inspected) {
+        Row(highlighted: false, inset: post.isInspected) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                SessionName(session: post.session, tag: tag)
+                SessionName(session: post.session) { chat.compose(tagging: $0) }
                 Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
                 Spacer()
                 Stamp(at: post.at)
@@ -140,8 +136,8 @@ struct PostView: View {
             figures
             HStack(spacing: 20) {
                 Button("copy prompt") { copyPrompt() }.disabled(post.job?.prompt == nil)
-                Button("use as reference", action: reference).disabled(post.job == nil)
-                Button("details", action: details).foregroundStyle(inspected ? Color.foreground : Color.tertiaryText)
+                Button("use as reference") { chat.attach(post) }.disabled(post.job == nil)
+                Button("details") { chat.inspect(post.isInspected ? nil : post) }.foregroundStyle(post.isInspected ? Color.foreground : Color.tertiaryText)
                 Button(post.validated ? "validated" : "validate") { Task { await validated() } }
                     .disabled(post.validated || validating)
                     .foregroundStyle(post.validated ? Color.lit : Color.tertiaryText)
@@ -169,7 +165,7 @@ struct PostView: View {
 
     private func validated() async {
         validating = true
-        refusal = await validate()
+        refusal = await chat.validate(post)
         validating = false
     }
 
@@ -181,15 +177,16 @@ struct PostView: View {
 }
 
 struct WorkingPostView: View {
-    let working: WorkingPost
-    let running: Bool
-    let tag: (String) -> Void
+    let working: WorkingModel
+    @Environment(Chat.self) private var chat
     @State private var shape = Shape3D.random()
+
+    private var running: Bool { chat.connection == .live }
 
     var body: some View {
         Row(highlighted: false, inset: false) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                SessionName(session: working.session, tag: tag)
+                SessionName(session: working.session) { chat.compose(tagging: $0) }
                 Spinner(running: running)
                 Text("image generation \(working.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
                 Spacer()

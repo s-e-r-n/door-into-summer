@@ -10,15 +10,13 @@ enum Connection: Equatable, Sendable {
 @MainActor
 @Observable
 final class Chat {
-    private(set) var cards: [Card] = []
+    let thread = ThreadStore()
     private(set) var connection = Connection.connecting
-    private(set) var pending: [Pending] = []
     private(set) var commands: [Command] = []
-    private(set) var validated: Set<String> = []
     private(set) var attached: ShownReference?
     private(set) var filed: [String: String] = [:]
-    var inspected: Post?
-    private(set) var lastInspected: Post?
+    private(set) var inspected: PostModel?
+    private(set) var lastInspected: PostModel?
     var tagging: String?
 
     private let server: ReviewServer
@@ -29,14 +27,6 @@ final class Chat {
         self.skillsRoot = skillsRoot
     }
 
-    var messages: [Message] {
-        DoorIntoSummer.messages(of: cards, pending: pending, validated: validated)
-    }
-
-    var sessions: [LiveSession] {
-        cards.map { LiveSession(name: $0.session, subject: $0.subject) }
-    }
-
     var serverAddress: String {
         server.address.host().map { "\($0):\(server.address.port ?? 80)" } ?? server.address.absoluteString
     }
@@ -45,14 +35,8 @@ final class Chat {
         for await board in server.boards() {
             switch board {
             case .cards(let cards):
-                self.cards = cards
+                thread.apply(cards)
                 connection = .live
-                let known = Set(cards.flatMap { card in card.feedbacks.map { "\(card.session)#\($0.number)" } })
-                pending.removeAll { sent in sent.number.map { known.contains("\(sent.session)#\($0)") } ?? false }
-                if let inspected, let shown = messages.lazy.compactMap({ if case .post(let post) = $0 { post } else { nil } }).first(where: { $0.id == inspected.id }) {
-                    self.inspected = shown
-                    lastInspected = shown
-                }
             case .lost:
                 connection = .lost
             }
@@ -61,7 +45,7 @@ final class Chat {
 
     func load() async -> Bool {
         guard let loaded = try? await server.cards() else { return false }
-        cards = loaded
+        thread.apply(loaded)
         connection = .live
         return true
     }
@@ -70,37 +54,31 @@ final class Chat {
         guard let instructions = instructions(in: text) else {
             return "A message opens with @session."
         }
-        let attempts = Dictionary(cards.map { ($0.session, $0.attempt) }, uniquingKeysWith: { first, _ in first })
-        if let unknown = instructions.first(where: { attempts[$0.session] == nil }) {
+        if let unknown = instructions.first(where: { thread.attempt(of: $0.session) == nil }) {
             return "No live session is named @\(unknown.session)."
         }
         let reference = attached.map { Reference(job: $0.job, url: $0.url) }
         var refusals: [String] = []
         for instruction in instructions {
-            let attempt = attempts[instruction.session] ?? 0
+            let attempt = thread.attempt(of: instruction.session) ?? 0
             let placed = Pending(id: UUID(), session: instruction.session, attempt: attempt, text: instruction.text, reference: reference, at: .now, number: nil)
-            pending.append(placed)
+            thread.place(placed)
             switch await server.send(Feedback(session: instruction.session, attempt: attempt, text: instruction.text, reference: reference)) {
             case .sent(let number):
-                if let index = pending.firstIndex(where: { $0.id == placed.id }) {
-                    pending[index].number = number
-                }
-                if cards.contains(where: { $0.session == instruction.session && $0.feedbacks.contains { $0.number == number } }) {
-                    pending.removeAll { $0.id == placed.id }
-                }
+                thread.numbered(placed.id, number)
                 attached = nil
             case .refused(let reason):
-                pending.removeAll { $0.id == placed.id }
+                thread.remove(placed.id)
                 refusals.append("@\(instruction.session): \(reason)")
             }
         }
         return refusals.isEmpty ? nil : refusals.joined(separator: " ")
     }
 
-    func validate(_ post: Post) async -> String? {
+    func validate(_ post: PostModel) async -> String? {
         switch await server.validate(Validation(session: post.session, attempt: post.attempt)) {
         case .filed(let file):
-            validated.insert(post.id)
+            thread.validated(post.id)
             filed[post.id] = file
             return nil
         case .refused(let reason):
@@ -108,24 +86,25 @@ final class Chat {
         }
     }
 
-    func attach(_ post: Post) {
+    func attach(_ post: PostModel) {
         guard let job = post.job, let generation = post.generation else { return }
         attached = ShownReference(job: job.id, url: generation.url, session: post.session, attempt: post.attempt)
     }
 
     func attach(_ reference: Reference) {
-        attached = shown(reference, in: cards)
+        attached = thread.shown(reference)
     }
 
     func detach() {
         attached = nil
     }
 
-    func inspect(_ post: Post?) {
+    func inspect(_ post: PostModel?) {
         inspected = post
         if let post {
             lastInspected = post
         }
+        thread.mark(inspected: post?.id)
     }
 
     func toggleInspector() {

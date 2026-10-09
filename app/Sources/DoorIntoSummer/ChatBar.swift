@@ -22,7 +22,7 @@ struct ChatBar: View {
     }
 
     private var currentChoices: [Choice] {
-        currentToken.map { choices(for: $0, sessions: chat.sessions, commands: chat.commands) } ?? []
+        currentToken.map { choices(for: $0, sessions: chat.thread.sessions, commands: chat.commands) } ?? []
     }
 
     var body: some View {

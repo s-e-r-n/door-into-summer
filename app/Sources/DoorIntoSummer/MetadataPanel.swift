@@ -7,7 +7,8 @@ private struct Field: Identifiable {
     var id: String { key }
 }
 
-private func fields(of post: Post) -> [Field] {
+@MainActor
+private func fields(of post: PostModel) -> [Field] {
     let job = post.job
     let shown = { (value: String?) in value ?? "unavailable" }
     return [
@@ -26,8 +27,8 @@ private func fields(of post: Post) -> [Field] {
 }
 
 struct MetadataPanel: View {
-    let post: Post
-    let close: () -> Void
+    let post: PostModel
+    @Environment(Chat.self) private var chat
 
     var body: some View {
         ScrollView {
@@ -36,7 +37,7 @@ struct MetadataPanel: View {
                     Text("@\(post.session)").font(.monoItalic).textSelection(.enabled)
                     Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
                     Spacer()
-                    Button("×", action: close).buttonStyle(.plain).foregroundStyle(Color.tertiaryText)
+                    Button("×") { chat.inspect(nil) }.buttonStyle(.plain).foregroundStyle(Color.tertiaryText)
                 }
                 Grid(alignment: .topLeading, horizontalSpacing: 7, verticalSpacing: 6) {
                     ForEach(fields(of: post)) { field in
