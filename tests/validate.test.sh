@@ -25,6 +25,10 @@ frame_job="e3b8d1f6-7a2c-4e9b-a5d0-1f4c8b6e3a92"
 rug_job="6d4f9b2a-3e8c-4d1f-b7a6-8c2e0f5d9b13"
 bed_job="1c8e5a3f-9b2d-4f6e-a0c7-3e9b1d6f4a85"
 unknown_job="00000000-0000-0000-0000-000000000000"
+table_job="3f6a9d2c-8b1e-4c7a-9e5f-0d2b7c4a6e18"
+bench_job="7c2e5b9f-0a4d-4e1b-8c6f-3a9d1e7b5c24"
+stool_job="a5d8e1c3-6f2b-4a9e-b0c7-4e1f8d2a6b39"
+long_job="17ab81564bd64b2f9bad1e15463ee4a0ffff"
 
 expect() {
   if [ "$2" = "$3" ]; then
@@ -98,6 +102,14 @@ filed() {
   ls -A "$gallery" | { grep -c -- "$1" || true; }
 }
 
+iptc_length_warnings() {
+  exiftool -validate -warning -a -s3 "$1" | { grep -c '^\[minor\] IPTC OriginalTransmissionReference too long' || true; }
+}
+
+upper_compact() {
+  tr -d - <<< "$1" | tr a-f A-F
+}
+
 distance() {
   python3 -I -c 'import sys; print(bin(int(sys.argv[1], 16) ^ int(sys.argv[2], 16)).count("1"))' "$1" "$2"
 }
@@ -132,7 +144,8 @@ cat > "$root/recorded.json" <<'JOB'
 }
 JOB
 for each in "$mug_job picture.png" "$next_job picture.png" "$sofa_job picture.png" "$shelf_job picture.png" \
-  "$clock_job picture.png" "$frame_job picture.png" "$vase_job smaller.png" "$lamp_job mirrored.png" "$bed_job missing.png"; do
+  "$clock_job picture.png" "$frame_job picture.png" "$vase_job smaller.png" "$lamp_job mirrored.png" "$bed_job missing.png" \
+  "$table_job picture.png" "$bench_job picture.png" "$stool_job picture.png" "$long_job picture.png"; do
   job $each
 done
 job "$rug_job" picture.png 'del(.params.prompt)'
@@ -140,6 +153,11 @@ cat > "$root/jobs/$shelf_job.meanwhile" <<MEANWHILE
 jq -cn --arg job "$shelf_job" '{job: \$job, validated_at: "2026-10-08T23:00:00+14:00", session: "shelf", subject: "a shelf",
   model: "Grok Image 2.0", parameters: {ratio: "9:16", quality: "medium", resolution: "1k", batch: 1}, prompt: "p",
   original: null, file: "2026-10-08-shelf-\(\$job).png", fingerprint: "0000000000000000"}' >> "$support/store.jsonl"
+MEANWHILE
+cat > "$root/jobs/$bench_job.meanwhile" <<MEANWHILE
+jq -cn --arg job "$(upper_compact "$bench_job")" '{job: \$job, validated_at: "2026-10-08T23:00:00+14:00", session: "bench", subject: "a bench",
+  model: "Grok Image 2.0", parameters: {ratio: "9:16", quality: "medium", resolution: "1k", batch: 1}, prompt: "p",
+  original: null, file: "2026-10-08-bench-\(\$job).png", fingerprint: "0000000000000000"}' >> "$support/store.jsonl"
 MEANWHILE
 cat > "$root/stub/higgsfield" <<STUB
 #!/usr/bin/env bash
@@ -160,7 +178,7 @@ jq -cn --arg job "$frame_job" '{job: $job, validated_at: "2026-10-01T09:00:00+14
   model: "Grok Image 2.0", parameters: {ratio: "9:16", quality: "medium", resolution: "1k", batch: 1}, prompt: "p",
   original: null, file: "2026-10-01-frame-\($job).png", fingerprint: "0000000000000000"}' >> "$support/store.jsonl"
 
-for session in mug vase lamp chair desk bed rug sofa shelf clock frame; do live "$session"; done
+for session in mug vase lamp chair desk bed rug sofa shelf clock frame long table bench stool; do live "$session"; done
 shown mug 1 "{\"job\": \"$mug_job\", \"original\": {\"label\": \"the photo\", \"url\": \"https://example.com/mug.jpg\"}}"
 shown vase 1 "{\"job\": \"$vase_job\"}"
 shown lamp 1 "{\"job\": \"$lamp_job\"}"
@@ -172,9 +190,13 @@ shown sofa 1 "{\"job\": \"$sofa_job\"}"
 shown shelf 1 "{\"job\": \"$shelf_job\"}"
 shown clock 1 "{\"job\": \"$clock_job\"}"
 shown frame 1 "{\"job\": \"$frame_job\"}"
+shown long 1 "{\"job\": \"$long_job\"}"
+shown table 1 "{\"job\": \"$table_job\"}"
+shown bench 1 "{\"job\": \"$bench_job\"}"
+shown stool 1 "{\"job\": \"$(upper_compact "$stool_job")\"}"
 
 served
-until_true '[ "$(curl -s "$url/cards" | jq length)" = 11 ]'
+until_true '[ "$(curl -s "$url/cards" | jq length)" = 15 ]'
 curl -s -N "$url/events" > "$root/events" &
 listener="$!"
 until_true 'grep -q "^data: \[" "$root/events"'
@@ -199,9 +221,16 @@ expect "POST /validate answers 200 {file}, named <YYYY-MM-DD>-<session>-<job>.<e
 expect "the gallery file is result_url at full resolution, its pixels untouched" \
   "$(magick identify -format '%wx%h %#' "$gallery/$file")" "$(magick identify -format '%wx%h %#' "$root/results/picture.png")"
 
-expect "the job id is in the file: IPTC OriginalTransmissionReference and XMP photoshop:TransmissionReference" \
-  "$(exiftool -s3 -IPTC:OriginalTransmissionReference -XMP-photoshop:TransmissionReference "$gallery/$file" | tr '\n' ' ')" \
-  "$mug_job $mug_job "
+iptc="$(exiftool -s3 -IPTC:OriginalTransmissionReference "$gallery/$file")"
+expect "IPTC OriginalTransmissionReference holds the job id without its hyphens, 32 hexadecimal characters" \
+  "$iptc ${#iptc}" "${mug_job//-/} 32"
+expect "XMP photoshop:TransmissionReference holds the job id in its 36-character form" \
+  "$(exiftool -s3 -XMP-photoshop:TransmissionReference "$gallery/$file")" "$mug_job"
+
+cp "$root/results/picture.png" "$root/forced.png"
+exiftool -m -q -overwrite_original "-IPTC:OriginalTransmissionReference=$mug_job" "$root/forced.png" 2> /dev/null
+expect "exiftool -validate -warning reports no IPTC length warning on the filed image, where it reports one on a 36-character IPTC value" \
+  "$(iptc_length_warnings "$gallery/$file") $(iptc_length_warnings "$root/forced.png")" "0 1"
 
 line="$(tail -1 "$support/store.jsonl")"
 expect "the store line holds every field of the schema, in its order" \
@@ -228,6 +257,8 @@ expect "404 when the card of session does not show attempt" \
   "$(posted mug 2 elsewhen) $(answer elsewhen .error)" "404 The card of mug shows attempt 1, not 2."
 expect "404 when the card names no job" "$(posted chair 1) $(answer chair .error)" "404 Attempt 1 of chair names no job."
 expect "404 when no live session shows a card" "$(posted ghost 1) $(answer ghost .error)" "404 No live session ghost shows a card."
+expect "404 when the card names a job that is not a Higgsfield job id, 32 hexadecimal digits once its hyphens are removed" \
+  "$(posted long 1) $(answer long .error) $(filed "$long_job")" "404 The job of long is not a Higgsfield job id, a UUID. 0"
 expect "400 for a body that is not {session, attempt}" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
   --data '{"session": "mug"}' "$url/validate")" 400
 
@@ -266,6 +297,28 @@ wait "$first" "$second"
 expect "two validations of one job at the same moment file one image and one line" \
   "$(printf '%s\n' "$(cat "$root/status-first")" "$(cat "$root/status-second")" | sort | tr '\n' ' ' | sed -E 's/^200 (409|500) $/one 200/') $(filed "$clock_job") $(line_of "$clock_job" | wc -l | tr -d ' ')" \
   "one 200 1 1"
+
+printf -- '-- one job, whatever the form of its id\n'
+
+posted stool 1 > /dev/null
+stool_file="$(answer stool .file)"
+expect "a card naming its job in capitals and without hyphens files it under one form per standard: IPTC the 32 lowercase hex digits, XMP, the file name and the store line the 36-character lowercase form" \
+  "$(exiftool -s3 -IPTC:OriginalTransmissionReference "$gallery/$stool_file") $(exiftool -s3 -XMP-photoshop:TransmissionReference "$gallery/$stool_file") ${stool_file#*-stool-} $(line_of "$stool_job" | jq -r .job)" \
+  "${stool_job//-/} $stool_job $stool_job.png $stool_job"
+
+table_upper="$(upper_compact "$table_job")"
+jq -cn --arg job "$table_upper" '{job: $job, validated_at: "2026-10-02T09:00:00+14:00", session: "table", subject: "a table",
+  model: "Grok Image 2.0", parameters: {ratio: "9:16", quality: "medium", resolution: "1k", batch: 1}, prompt: "p",
+  original: null, file: "2026-10-02-table-\($job).png", fingerprint: "0000000000000000"}' >> "$support/store.jsonl"
+until_true '[ "$(card table | jq -c .validated)" = true ]'
+expect "validated: true on a card whose job the store holds in capitals and without hyphens" "$(card table | jq -c .validated)" true
+expect "409 with the file of a job the store holds in capitals and without hyphens, and nothing filed" \
+  "$(posted table 1) $(answer table .file) $(filed "$table_job") $(jq -s --arg job "$table_upper" 'map(select(.job == $job)) | length' "$support/store.jsonl")" \
+  "409 2026-10-02-table-$table_upper.png 0 1"
+
+expect "the uniqueness check inside append compares ids without hyphens and in lowercase: a line written meanwhile in capitals and without hyphens answers 409 with its file, and the image placed goes" \
+  "$(posted bench 1) $(answer bench .file) $(filed "$bench_job") $(line_of "$bench_job" | wc -l | tr -d ' ')" \
+  "409 2026-10-08-bench-$(upper_compact "$bench_job").png 0 0"
 
 printf -- '-- the fingerprint\n'
 

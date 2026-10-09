@@ -11,7 +11,8 @@ keepalive_seconds = 15
 def shown(name: str, card: Card, filed: set[str]) -> dict:
     job = shown_job(card.job) if card.job is not None else None
     conversation = [shown_item(item) for item in conversation_of(name, card.attempt)]
-    return (shown_card(name, card) | ({} if job is None else {"job": job}) | {"validated": card.job in filed}
+    validated = card.job is not None and store.job_key(card.job) in filed
+    return (shown_card(name, card) | ({} if job is None else {"job": job}) | {"validated": validated}
             | {"conversation": conversation})
 
 
@@ -25,7 +26,7 @@ class Board:
 
     def refresh(self) -> None:
         try:
-            filed = store.job_ids()
+            filed = {store.job_key(job) for job in store.job_ids()}
         except OSError:
             filed = self.filed
         cards = {}
