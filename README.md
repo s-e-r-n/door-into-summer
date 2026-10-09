@@ -49,6 +49,7 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
    exit 1   no match within 10 bits: the image was never validated
    exit 2   unreadable: <path>: <reason>, on stderr
    ```
+6. Help: `Door into Summer Help`, the one item of the Help menu, opens a short guide: how the chat works, then each command and shortcut of the chat.
 
 ## Reference
 
