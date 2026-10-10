@@ -76,23 +76,24 @@ struct ChatBar: View {
                 .textFieldStyle(.plain)
                 .foregroundStyle(Color.foreground)
                 .focused($focused)
+                .cursor(.iBeam)
         }
-            .padding(.horizontal, Layout.barInset)
-            .frame(maxWidth: Layout.barWidth)
-            .frame(height: Layout.barHeight)
-            .glassEffect(.regular.interactive(), in: Capsule())
-            .padding(.horizontal, Layout.horizontalPadding)
-            .onSubmit { send() }
-            .onKeyPress(.upArrow) { move(-1) }
-            .onKeyPress(.downArrow) { move(1) }
-            .onKeyPress(.tab) { pickChosen() }
-            .onKeyPress(.return) { pickChosen() }
-            .onKeyPress(.escape) { dismiss() }
-            .task(id: currentToken) {
-                if currentToken != nil {
-                    await chat.refreshCommands()
-                }
+        .padding(.horizontal, Layout.barInset)
+        .frame(maxWidth: Layout.barWidth)
+        .frame(height: Layout.barHeight)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .padding(.horizontal, Layout.horizontalPadding)
+        .onSubmit { send() }
+        .onKeyPress(.upArrow) { move(-1) }
+        .onKeyPress(.downArrow) { move(1) }
+        .onKeyPress(.tab) { pickChosen() }
+        .onKeyPress(.return) { pickChosen() }
+        .onKeyPress(.escape) { dismiss() }
+        .task(id: currentToken) {
+            if currentToken != nil {
+                await chat.refreshCommands()
             }
+        }
     }
 
     private func move(_ step: Int) -> KeyPress.Result {

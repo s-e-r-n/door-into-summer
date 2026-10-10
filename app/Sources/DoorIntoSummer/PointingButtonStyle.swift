@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct PointingButtonStyle: PrimitiveButtonStyle {
@@ -16,6 +17,6 @@ private struct PointingButton: View {
 
     var body: some View {
         PlainButtonStyle().makeBody(configuration: configuration)
-            .pointerStyle(enabled ? .link : nil)
+            .cursor(enabled ? .pointingHand : nil)
     }
 }
