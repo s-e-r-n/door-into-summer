@@ -215,5 +215,6 @@ case .some(let command):
     exit(printed(.misused("unknown command: \(command)")))
 case nil:
     registeredFonts()
+    _ = HexSprite.shared
     DoorIntoSummerApp.main()
 }

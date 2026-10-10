@@ -79,7 +79,7 @@ struct Skeleton: View {
 
     var body: some View {
         Color.desk
-            .overlay { TextLoader(running: running) }
+            .overlay { HexLoader(running: running) }
             .overlay(alignment: .bottomTrailing) {
                 Text(ratio.label)
                     .foregroundStyle(Color.tertiaryText)
