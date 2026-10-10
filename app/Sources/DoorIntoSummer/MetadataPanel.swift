@@ -15,7 +15,6 @@ struct DetailsPanel: View {
 struct MetadataPanel: View {
     let post: PostModel
     @Environment(Chat.self) private var chat
-    @Environment(\.cursorOwner) private var cursor
 
     var body: some View {
         ScrollView {
@@ -39,7 +38,6 @@ struct MetadataPanel: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollIndicators(.hidden)
-        .onScrollGeometryChange(for: CGPoint.self) { $0.contentOffset } action: { _, _ in cursor?.refresh() }
         .foregroundStyle(Color.foreground)
         .shadow(color: .white.opacity(0.4), radius: 2)
         .shadow(color: .white.opacity(0.18), radius: 10)

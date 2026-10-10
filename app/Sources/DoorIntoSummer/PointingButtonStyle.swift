@@ -17,6 +17,6 @@ private struct PointingButton: View {
 
     var body: some View {
         PlainButtonStyle().makeBody(configuration: configuration)
-            .cursor(enabled ? .pointingHand : nil)
+            .pointerStyle(enabled ? .link : nil)
     }
 }

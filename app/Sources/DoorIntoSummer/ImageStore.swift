@@ -44,11 +44,6 @@ final class ImageStore {
         decoded.object(forKey: url as NSURL)
     }
 
-    func prefetch(_ url: URL, ratio: Ratio?) {
-        guard held(url) == nil, loading[url] == nil else { return }
-        Task { _ = await image(for: url, ratio: ratio) }
-    }
-
     func image(for url: URL, ratio: Ratio?) async -> Decoded? {
         if let image = held(url) {
             return image

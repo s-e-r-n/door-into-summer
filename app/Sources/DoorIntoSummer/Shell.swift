@@ -8,21 +8,19 @@ private let slideKey = "slide"
 @MainActor
 final class ShellView: NSView {
     private let chat: Chat
-    private let cursor: CursorOwner
     private let feed: FeedController
     private let panel: NSHostingView<Leaf<DetailsPanel>>
     private let strip = DragStrip()
     private var open = false
     private var barHeight = Layout.barHeight + Layout.barBottomPadding
-    private lazy var bar = leafView(ChatBar(chat: chat, resized: { [weak self] in self?.barResized($0) }), chat: chat, cursor: cursor)
+    private lazy var bar = leafView(ChatBar(chat: chat, resized: { [weak self] in self?.barResized($0) }), chat: chat)
     private lazy var observer = Observer(read: { [unowned self] in chat.inspected != nil }, apply: { [unowned self] in place(open: $0) },
                                          invalidate: { [unowned self] in needsLayout = true })
 
-    init(chat: Chat, cursor: CursorOwner) {
+    init(chat: Chat) {
         self.chat = chat
-        self.cursor = cursor
-        feed = FeedController(chat: chat, cursor: cursor)
-        panel = leafView(DetailsPanel(chat: chat), chat: chat, cursor: cursor)
+        feed = FeedController(chat: chat)
+        panel = leafView(DetailsPanel(chat: chat), chat: chat)
         super.init(frame: .zero)
         wantsLayer = true
         addSubview(feed.scrollView)
@@ -30,7 +28,6 @@ final class ShellView: NSView {
         addSubview(panel)
         addSubview(strip)
         feed.set(bottomInset: barHeight)
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .inVisibleRect, .activeInActiveApp], owner: self))
     }
 
     required init?(coder: NSCoder) {
@@ -39,8 +36,7 @@ final class ShellView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let window {
-            cursor.claim(window)
+        if window != nil {
             needsLayout = true
         }
     }
@@ -59,18 +55,6 @@ final class ShellView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         needsLayout = true
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        cursor.entered(at: event.locationInWindow)
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        cursor.moved(to: event.locationInWindow)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        cursor.left()
     }
 
     private func place(open: Bool) {
