@@ -27,6 +27,7 @@ final class ShellView: NSView {
         addSubview(bar)
         addSubview(panel)
         addSubview(strip)
+        addSubview(RefreshCounter())
         feed.set(bottomInset: barHeight)
     }
 
