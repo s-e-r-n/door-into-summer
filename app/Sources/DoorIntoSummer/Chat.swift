@@ -2,9 +2,8 @@ import Foundation
 import Observation
 
 enum Connection: Equatable, Sendable {
-    case connecting
+    case reading
     case live
-    case lost
 }
 
 struct Summons: Equatable {
@@ -17,7 +16,7 @@ struct Summons: Equatable {
 final class Chat {
     let thread = ThreadStore()
     let images = ImageStore()
-    private(set) var connection = Connection.connecting
+    private(set) var connection = Connection.reading
     private(set) var commands: [Command] = []
     private(set) var attached: ShownReference?
     private(set) var filed: [String: String] = [:]
@@ -26,30 +25,24 @@ final class Chat {
     private(set) var summons: Summons?
     var tagging: String?
 
-    private let server: ReviewServer
+    private let board: Board
     private let skillsRoot: URL
     @ObservationIgnored private var notifier: Notifier?
 
-    init(server: ReviewServer = ReviewServer(), skillsRoot: URL = Commands.defaultRoot) {
-        self.server = server
+    init(board: Board = Board(), skillsRoot: URL = Commands.defaultRoot) {
+        self.board = board
         self.skillsRoot = skillsRoot
-    }
-
-    var serverAddress: String {
-        server.address.host().map { "\($0):\(server.address.port ?? 80)" } ?? server.address.absoluteString
     }
 
     func start() async {
         notifier = notifier ?? Notifier { [weak self] session, attempt in
             self?.summon(session: session, attempt: attempt)
         }
-        for await event in server.events() {
-            if case .lost = event {
-                connection = .lost
-            } else {
-                for delivery in thread.apply(event) {
-                    notifier?.announce(delivery)
-                }
+        for await change in board.changes() {
+            for delivery in thread.apply(change) {
+                notifier?.announce(delivery)
+            }
+            if case .settled = change {
                 connection = .live
             }
         }
@@ -59,13 +52,6 @@ final class Chat {
         guard let post = thread.post(session: session, attempt: attempt) else { return }
         thread.showPage(holding: post.id)
         summons = Summons(post: post.id)
-    }
-
-    func load() async -> Bool {
-        guard let loaded = try? await server.cards() else { return false }
-        thread.apply(.ready(loaded))
-        connection = .live
-        return true
     }
 
     func send(_ text: String) async -> String? {
@@ -81,7 +67,7 @@ final class Chat {
             let attempt = thread.attempt(of: instruction.session) ?? 0
             let placed = Pending(id: UUID(), session: instruction.session, attempt: attempt, text: instruction.text, reference: reference, at: .now, number: nil)
             thread.place(placed)
-            switch await server.send(Feedback(session: instruction.session, attempt: attempt, text: instruction.text, reference: reference)) {
+            switch await deliver(Feedback(session: instruction.session, attempt: attempt, text: instruction.text, reference: reference)) {
             case .sent(let number):
                 thread.numbered(placed.id, number)
                 attached = nil
@@ -96,7 +82,8 @@ final class Chat {
     @discardableResult
     func validate(_ post: PostModel) async -> String? {
         thread.beginValidation(post.id)
-        switch await server.validate(Validation(session: post.session, attempt: post.attempt)) {
+        let validation = Validation(session: post.session, attempt: post.attempt, job: post.jobID, subject: post.subject, original: post.original.map(location))
+        switch await file(validation) {
         case .filed(let file):
             thread.validated(post.id)
             filed[post.id] = file
@@ -108,9 +95,13 @@ final class Chat {
         }
     }
 
+    private func location(_ picture: Picture) -> String {
+        picture.url.isFileURL ? picture.url.path : picture.url.absoluteString
+    }
+
     func attach(_ post: PostModel) {
-        guard let job = post.job, let generation = post.generation else { return }
-        attached = ShownReference(job: job.id, url: generation.url, session: post.session, attempt: post.attempt)
+        guard let job = post.jobID, let generation = post.generation else { return }
+        attached = ShownReference(job: job, url: generation.url, session: post.session, attempt: post.attempt)
     }
 
     func attach(_ reference: Reference) {

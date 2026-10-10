@@ -16,7 +16,6 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from review import jobs, store
-from review.cards import Card, image_location
 
 download_seconds = 60
 tool_seconds = 60
@@ -56,10 +55,10 @@ class Match:
     distance: int
 
 
-def job_of(session: str, attempt: int, card: Card) -> UUID:
-    if card.job is None:
+def job_of(session: str, attempt: int, job: str | None) -> UUID:
+    if job is None:
         raise NotShown(f"Attempt {attempt} of {session} names no job.")
-    key = store.job_key(card.job)
+    key = store.job_key(job)
     if not hex_job.match(key):
         raise NotShown(f"The job of {session} is not a Higgsfield job id, a UUID.")
     return UUID(hex=key)
@@ -177,10 +176,8 @@ def rename_without_replacing(source: Path, target: Path) -> None:
         raise
 
 
-def validate(session: str, attempt: int, card: Card | None) -> str:
-    if card is None:
-        raise NotShown(f"No card of {session} shows attempt {attempt}.")
-    job = job_of(session, attempt, card)
+def validate(session: str, attempt: int, named_job: str | None, subject: str, original: str | None) -> str:
+    job = job_of(session, attempt, named_job)
     job_id = str(job)
     filed = store.file_of(job_id)
     if filed is not None:
@@ -201,8 +198,8 @@ def validate(session: str, attempt: int, card: Card | None) -> str:
     finally:
         temporary.unlink(missing_ok=True)
     try:
-        store.append(store.Line(job_id, now.isoformat(timespec="seconds"), session, card.subject, generation.model,
-                                parameters, generation.prompt, image_location(card.original), name, hashed))
+        store.append(store.Line(job_id, now.isoformat(timespec="seconds"), session, subject, generation.model,
+                                parameters, generation.prompt, original, name, hashed))
     except (OSError, store.AlreadyFiled):
         (gallery / name).unlink()
         raise

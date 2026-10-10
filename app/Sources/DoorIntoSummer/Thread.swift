@@ -1,5 +1,76 @@
 import Foundation
 
+struct SessionRecord: Equatable, Sendable {
+    let name: String
+    var current: Attempt
+    var attempts: [Int: Attempt]
+}
+
+struct Seen: Equatable, Hashable, Sendable {
+    let at: Date
+    let original: Picture?
+    let generation: Picture
+    let jobID: String?
+    let job: Job?
+    let validated: Bool
+}
+
+struct Answered: Equatable, Hashable, Sendable {
+    let attempt: Int
+    let seen: Seen?
+}
+
+enum Spoken: Equatable, Hashable, Sendable {
+    case reviewer(Said)
+    case session(Answered)
+
+    var at: Date? {
+        switch self {
+        case .reviewer(let said): said.sentAt
+        case .session(let answered): answered.seen?.at
+        }
+    }
+}
+
+struct Card: Equatable, Sendable {
+    let session: String
+    let subject: String
+    let attempt: Int
+    let at: Date
+    let conversation: [Spoken]
+    let working: Ratio?
+
+    var feedbacks: [Said] {
+        conversation.compactMap { if case .reviewer(let said) = $0 { said } else { nil } }
+    }
+
+    var answers: [Answered] {
+        conversation.compactMap { if case .session(let answered) = $0 { answered } else { nil } }
+    }
+}
+
+func card(of record: SessionRecord, feedbacks: [Int: Said], jobs: [String: Job?], filed: Set<String>) -> Card {
+    let spoken = feedbacks.values.sorted { $0.number < $1.number }
+    var answered = Set(record.attempts.keys).union(spoken.map(\.attempt)).sorted()
+    var conversation: [Spoken] = []
+    for said in spoken {
+        while let next = answered.first, next <= said.attempt {
+            conversation.append(.session(Answered(attempt: next, seen: seen(record.attempts[next], jobs: jobs, filed: filed))))
+            answered.removeFirst()
+        }
+        conversation.append(.reviewer(said))
+    }
+    conversation += answered.map { .session(Answered(attempt: $0, seen: seen(record.attempts[$0], jobs: jobs, filed: filed))) }
+    return Card(session: record.name, subject: record.current.subject, attempt: record.current.number, at: record.current.at,
+                conversation: conversation, working: record.current.working)
+}
+
+private func seen(_ attempt: Attempt?, jobs: [String: Job?], filed: Set<String>) -> Seen? {
+    guard let attempt else { return nil }
+    return Seen(at: attempt.at, original: attempt.original, generation: attempt.generation, jobID: attempt.job,
+                job: attempt.job.flatMap { jobs[$0] ?? nil }, validated: attempt.job.map { filed.contains(StoreFile.jobKey($0)) } ?? false)
+}
+
 struct Pending: Equatable, Hashable, Identifiable, Sendable {
     let id: UUID
     let session: String
@@ -41,6 +112,7 @@ struct Post: Equatable, Hashable, Identifiable, Sendable {
     let at: Date?
     let original: Picture?
     let generation: Picture?
+    let jobID: String?
     let job: Job?
     let validated: Bool
 }
@@ -86,7 +158,7 @@ func messages(of cards: [Card], pending: [Pending], validated: Set<String>) -> [
 }
 
 func shown(_ reference: Reference, in cards: [Card]) -> ShownReference {
-    let source = cards.lazy.flatMap { card in card.answers.map { (session: card.session, attempt: $0.attempt, job: $0.seen?.job?.id) } }
+    let source = cards.lazy.flatMap { card in card.answers.map { (session: card.session, attempt: $0.attempt, job: $0.seen?.jobID) } }
         .first { $0.job == reference.job }
     return ShownReference(job: reference.job, url: reference.url, session: source?.session, attempt: source?.attempt)
 }
@@ -97,7 +169,8 @@ private func placed(of card: Card, in cards: [Card], validated: Set<String>) -> 
         Placed(at: times[rank], rank: rank, message: message(of: card.conversation[rank], on: card, in: cards, validated: validated))
     }
     if let working = card.working {
-        let next = WorkingPost(id: "\(card.session)~", session: card.session, subject: card.subject, attempt: card.attempt + 1, ratio: working.ratio, job: card.job)
+        let job = card.answers.last { $0.attempt == card.attempt }?.seen?.job
+        let next = WorkingPost(id: "\(card.session)~", session: card.session, subject: card.subject, attempt: card.attempt + 1, ratio: working, job: job)
         listed.append(Placed(at: card.at, rank: card.conversation.count, message: .working(next)))
     }
     return listed
@@ -121,7 +194,7 @@ private func message(of spoken: Spoken, on card: Card, in cards: [Card], validat
         let id = "\(card.session)@\(answered.attempt)"
         let seen = answered.seen
         return .post(Post(id: id, session: card.session, subject: card.subject, attempt: answered.attempt, at: seen?.at, original: seen?.original,
-                          generation: seen?.generation, job: seen?.job, validated: seen?.validated == true || validated.contains(id)))
+                          generation: seen?.generation, jobID: seen?.jobID, job: seen?.job, validated: seen?.validated == true || validated.contains(id)))
     }
 }
 

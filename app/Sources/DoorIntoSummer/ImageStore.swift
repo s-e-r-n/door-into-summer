@@ -1,10 +1,12 @@
 import AppKit
+import CryptoKit
 import ImageIO
 import SwiftUI
 
 private let decodedLimit = 5
 private let thumbnailLimit = 40
-private let diskCapacity = 512 << 20
+private let downloads = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    .appending(path: "com.waveprom.door-into-summer/images", directoryHint: .isDirectory)
 
 final class Decoded: Sendable {
     let image: CGImage
@@ -22,20 +24,12 @@ private func cache(holding limit: Int) -> NSCache<NSString, Decoded> {
     return cache
 }
 
-private func cachingSession() -> URLSession {
-    let configuration = URLSessionConfiguration.default
-    let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-    configuration.urlCache = URLCache(memoryCapacity: 0, diskCapacity: diskCapacity, directory: caches?.appending(path: "com.waveprom.door-into-summer/images"))
-    configuration.requestCachePolicy = .useProtocolCachePolicy
-    return URLSession(configuration: configuration)
-}
-
 @MainActor
 final class ImageStore {
-    private let session = cachingSession()
     private let decoded = cache(holding: decodedLimit)
     private let thumbnails = cache(holding: thumbnailLimit)
     private var loading: [NSString: Task<Decoded?, Never>] = [:]
+    private var files: [URL: Task<URL?, Never>] = [:]
 
     nonisolated init() {}
 
@@ -80,24 +74,59 @@ final class ImageStore {
     }
 
     private func loaded(_ url: URL, side: Int) async -> Decoded? {
-        guard let (data, _) = try? await session.data(from: url) else { return nil }
-        return await decodedImage(data, within: side)
+        guard let file = await fileURL(for: url) else { return nil }
+        return await decodedImage(at: file, within: side)
+    }
+
+    private func fileURL(for url: URL) async -> URL? {
+        if url.isFileURL {
+            return url
+        }
+        if let task = files[url] {
+            return await task.value
+        }
+        let task = Task { await downloaded(url, to: downloads.appending(path: Self.fileName(of: url))) }
+        files[url] = task
+        let file = await task.value
+        files[url] = nil
+        return file
     }
 
     private static func key(_ url: URL, _ side: Int) -> NSString {
         "\(url.absoluteString)#\(side)" as NSString
     }
+
+    private static func fileName(of url: URL) -> String {
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+        return url.pathExtension.isEmpty ? digest : "\(digest).\(url.pathExtension)"
+    }
+}
+
+private func downloaded(_ url: URL, to file: URL) async -> URL? {
+    if FileManager.default.fileExists(atPath: file.path) {
+        return file
+    }
+    guard let (temporary, response) = try? await URLSession.shared.download(from: url),
+          (response as? HTTPURLResponse).map({ 200 ..< 300 ~= $0.statusCode }) ?? true else { return nil }
+    try? FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+    do {
+        try FileManager.default.moveItem(at: temporary, to: file)
+    } catch {
+        try? FileManager.default.removeItem(at: temporary)
+        return FileManager.default.fileExists(atPath: file.path) ? file : nil
+    }
+    return file
 }
 
 @concurrent
-private func decodedImage(_ data: Data, within side: Int) async -> Decoded? {
+private func decodedImage(at file: URL, within side: Int) async -> Decoded? {
     let options = [
         kCGImageSourceCreateThumbnailFromImageAlways: true,
         kCGImageSourceCreateThumbnailWithTransform: true,
         kCGImageSourceThumbnailMaxPixelSize: side,
         kCGImageSourceShouldCacheImmediately: true,
     ] as CFDictionary
-    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+    guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
           let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options),
           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
           let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,

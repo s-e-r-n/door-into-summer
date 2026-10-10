@@ -14,6 +14,10 @@ mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources"
 cp "$bin_path/$product_name" "$app_path/Contents/MacOS/$product_name"
 cp -R "$bin_path/${product_name}_${product_name}.bundle" "$app_path/Contents/Resources/"
 cp /System/Library/Sounds/Blow.aiff "$app_path/Contents/Resources/"
+mkdir -p "$app_path/Contents/Resources/bin"
+cp "$package_root/../bin/review_window.py" "$app_path/Contents/Resources/bin/"
+cp -R "$package_root/../bin/review" "$app_path/Contents/Resources/bin/review"
+rm -rf "$app_path/Contents/Resources/bin/review/__pycache__"
 icon_plist="$package_root/.build/$icon_name.plist"
 xcrun actool "$package_root/$icon_name.icon" --compile "$app_path/Contents/Resources" --app-icon "$icon_name" --platform macosx --target-device mac --minimum-deployment-target "$minimum_system_version" --output-partial-info-plist "$icon_plist" --output-format human-readable-text --errors --warnings >&2
 bundle_icon_file="$(plutil -extract CFBundleIconFile raw "$icon_plist")"
@@ -31,10 +35,6 @@ cat > "$app_path/Contents/Info.plist" <<PLIST
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>LSMinimumSystemVersion</key><string>$minimum_system_version</string>
 	<key>NSHighResolutionCapable</key><true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key><true/>
-	</dict>
 </dict>
 </plist>
 PLIST
