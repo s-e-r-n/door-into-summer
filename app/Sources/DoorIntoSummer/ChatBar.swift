@@ -159,8 +159,7 @@ private struct ReferenceLine: View {
             .frame(width: thumbnailSide, height: thumbnailSide)
             .clipped()
             .task(id: reference.url) {
-                let scale = NSScreen.main?.backingScaleFactor ?? 2
-                image = await images.thumbnail(for: reference.url, within: Int(thumbnailSide * scale))?.image
+                image = await images.image(for: reference.url, ratio: nil)?.image
             }
             if let session = reference.session, let attempt = reference.attempt {
                 Text("\(Text("@\(session)").font(.monoItalic)) · image generation \(attempt)").lineLimit(1)

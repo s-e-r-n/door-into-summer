@@ -7,7 +7,7 @@ struct PlacedLine: Hashable {
 }
 
 enum BoxContent: Hashable {
-    case picture(URL, ratioKnown: Bool)
+    case picture(URL, ratio: Ratio?)
     case thumbnail(URL)
     case waiting
 }
@@ -15,10 +15,6 @@ enum BoxContent: Hashable {
 struct Box: Hashable {
     let frame: CGRect
     let content: BoxContent
-
-    func pixelSide(at scale: CGFloat) -> Int {
-        Int((max(frame.width, frame.height) * scale).rounded(.up))
-    }
 }
 
 enum RowAction: Hashable {
@@ -71,6 +67,11 @@ private let ticksLead: CGFloat = 8
 private let ticksOverlap: CGFloat = 4
 private let labelInset = CGSize(width: 12, height: 10)
 private let square = Ratio(width: 1, height: 1)
+
+@MainActor
+func contentWidth(at width: CGFloat) -> CGFloat {
+    max(width - 2 * Layout.horizontalPadding, Mono.characterWidth)
+}
 
 @MainActor
 func plan(post: PostModel, width: CGFloat, measured: [URL: Ratio]) -> RowPlan {
@@ -156,7 +157,7 @@ private struct RowBuilder {
     private var first = true
 
     init(width: CGFloat) {
-        content = max(width - 2 * Layout.horizontalPadding, Mono.characterWidth)
+        content = contentWidth(at: width)
     }
 
     func plan(highlighted: Bool, inset: Bool) -> RowPlan {
@@ -230,7 +231,7 @@ private struct RowBuilder {
         let widths = shared(figures.map { ($0.ratio ?? square).box(in: content).width })
         for (figure, width) in zip(figures, widths) {
             let frame = CGRect(x: x, y: y, width: width, height: (width / (figure.ratio ?? square).value).rounded())
-            boxes.append(Box(frame: frame, content: .picture(figure.url, ratioKnown: figure.ratio != nil)))
+            boxes.append(Box(frame: frame, content: .picture(figure.url, ratio: figure.ratio)))
             if let ratio = figure.ratio {
                 label(ratio, in: frame)
             }

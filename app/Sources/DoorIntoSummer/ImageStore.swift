@@ -3,8 +3,7 @@ import CryptoKit
 import ImageIO
 import SwiftUI
 
-private let decodedLimit = 5
-private let thumbnailLimit = 40
+private let decodedBudget = 256 << 20
 private let downloads = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
     .appending(path: "com.waveprom.door-into-summer/images", directoryHint: .isDirectory)
 
@@ -16,61 +15,61 @@ final class Decoded: Sendable {
         self.image = image
         self.ratio = ratio
     }
+
+    var cost: Int { image.bytesPerRow * image.height }
 }
 
-private func cache(holding limit: Int) -> NSCache<NSString, Decoded> {
-    let cache = NSCache<NSString, Decoded>()
-    cache.countLimit = limit
+private func cache(costing budget: Int) -> NSCache<NSURL, Decoded> {
+    let cache = NSCache<NSURL, Decoded>()
+    cache.totalCostLimit = budget
     return cache
 }
 
 @MainActor
 final class ImageStore {
-    private let decoded = cache(holding: decodedLimit)
-    private let thumbnails = cache(holding: thumbnailLimit)
-    private var loading: [NSString: Task<Decoded?, Never>] = [:]
+    private let decoded = cache(costing: decodedBudget)
+    private var loading: [URL: Task<Decoded?, Never>] = [:]
     private var files: [URL: Task<URL?, Never>] = [:]
+    private var content: CGFloat = 0
+    private var scale: CGFloat = 2
 
     nonisolated init() {}
 
-    func image(for url: URL, within side: Int) async -> Decoded? {
-        await held(in: decoded, url: url, side: side)
+    func resize(content: CGFloat, scale: CGFloat) {
+        self.content = content
+        self.scale = scale
     }
 
-    func thumbnail(for url: URL, within side: Int) async -> Decoded? {
-        await held(in: thumbnails, url: url, side: side)
+    func held(_ url: URL) -> Decoded? {
+        decoded.object(forKey: url as NSURL)
     }
 
-    func held(_ url: URL, within side: Int) -> Decoded? {
-        decoded.object(forKey: Self.key(url, side))
+    func prefetch(_ url: URL, ratio: Ratio?) {
+        guard held(url) == nil, loading[url] == nil else { return }
+        Task { _ = await image(for: url, ratio: ratio) }
     }
 
-    func heldThumbnail(_ url: URL, within side: Int) -> Decoded? {
-        thumbnails.object(forKey: Self.key(url, side))
-    }
-
-    func prefetch(_ url: URL, within side: Int) {
-        let key = Self.key(url, side)
-        guard decoded.object(forKey: key) == nil, loading[key] == nil else { return }
-        Task { _ = await image(for: url, within: side) }
-    }
-
-    private func held(in cache: NSCache<NSString, Decoded>, url: URL, side: Int) async -> Decoded? {
-        let key = Self.key(url, side)
-        if let image = cache.object(forKey: key) {
+    func image(for url: URL, ratio: Ratio?) async -> Decoded? {
+        if let image = held(url) {
             return image
         }
-        if let task = loading[key] {
+        if let task = loading[url] {
             return await task.value
         }
+        let side = side(of: ratio)
         let task = Task { await loaded(url, side: side) }
-        loading[key] = task
+        loading[url] = task
         let image = await task.value
-        loading[key] = nil
+        loading[url] = nil
         if let image {
-            cache.setObject(image, forKey: key)
+            decoded.setObject(image, forKey: url as NSURL, cost: image.cost)
         }
         return image
+    }
+
+    private func side(of ratio: Ratio?) -> Int {
+        let box = ratio?.box(in: content) ?? CGSize(width: max(Ratio.figureHeight, content), height: Ratio.figureHeight)
+        return Int((max(box.width, box.height) * scale).rounded(.up))
     }
 
     private func loaded(_ url: URL, side: Int) async -> Decoded? {
@@ -90,10 +89,6 @@ final class ImageStore {
         let file = await task.value
         files[url] = nil
         return file
-    }
-
-    private static func key(_ url: URL, _ side: Int) -> NSString {
-        "\(url.absoluteString)#\(side)" as NSString
     }
 
     private static func fileName(of url: URL) -> String {
