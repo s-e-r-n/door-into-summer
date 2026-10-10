@@ -17,9 +17,19 @@ struct Ratio: Equatable, Hashable, Sendable {
         self.init(width: sides[0], height: sides[1])
     }
 
-    var label: String { "\(width):\(height)" }
+    var label: String {
+        let divisor = gcd(width, height)
+        return "\(width / divisor):\(height / divisor)"
+    }
 
     var value: CGFloat { CGFloat(width) / CGFloat(height) }
 
-    var figureWidth: CGFloat { (Self.figureHeight * value).rounded() }
+    func box(in available: CGFloat) -> CGSize {
+        let width = min((Self.figureHeight * value).rounded(), available)
+        return CGSize(width: width, height: (width / value).rounded())
+    }
+}
+
+private func gcd(_ a: Int, _ b: Int) -> Int {
+    b == 0 ? a : gcd(b, a % b)
 }

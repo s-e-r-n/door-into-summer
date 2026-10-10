@@ -13,12 +13,17 @@ struct Delivery: Equatable, Sendable {
     }
 }
 
-protocol Settled: AnyObject {}
+@MainActor
+protocol Settled: AnyObject {
+    var isUnplanned: Bool { get }
+    func forgetPlans()
+}
 
 extension Settled {
     func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<Self, Value>, to value: Value) {
         if self[keyPath: keyPath] != value {
             self[keyPath: keyPath] = value
+            forgetPlans()
         }
     }
 }
@@ -36,6 +41,9 @@ final class PostModel: Identifiable, Settled {
     private(set) var job: Job?
     private(set) var validated: Bool
     private(set) var isInspected = false
+    private(set) var validating = false
+    private(set) var refusal: String?
+    @ObservationIgnored private var plans: [CGFloat: RowPlan] = [:]
 
     init(_ post: Post) {
         id = post.id
@@ -61,44 +69,77 @@ final class PostModel: Identifiable, Settled {
     fileprivate func mark(inspected: Bool) {
         update(\.isInspected, to: inspected)
     }
+
+    fileprivate func validation(running: Bool, refusal: String?) {
+        update(\.validating, to: running)
+        update(\.refusal, to: refusal)
+    }
+
+    fileprivate func shows(_ url: URL) -> Bool {
+        original?.url == url || generation?.url == url
+    }
+
+    func plan(at width: CGFloat, measured: [URL: Ratio]) -> RowPlan {
+        if let plan = plans[width] {
+            return plan
+        }
+        let plan = DoorIntoSummer.plan(post: self, width: width, measured: measured)
+        plans[width] = plan
+        return plan
+    }
+
+    var isUnplanned: Bool { plans.isEmpty }
+
+    func forgetPlans() {
+        plans = [:]
+    }
 }
 
 @MainActor
-@Observable
 final class ReviewerModel: Identifiable, Settled {
     let id: String
     let session: String
     let attempt: Int
-    private(set) var text: AttributedString
+    private(set) var text: String
     private(set) var mark: TickMark
     private(set) var stamp: String
     private(set) var reference: ShownReference?
-    @ObservationIgnored private var plain: String
+    private var plans: [CGFloat: RowPlan] = [:]
 
     init(_ message: ReviewerMessage) {
         id = message.id
         session = message.session
         attempt = message.attempt
-        plain = message.text
-        text = styled(message.text)
+        text = message.text
         mark = message.mark
         stamp = shownTime(of: message.at)
         reference = message.reference
     }
 
     fileprivate func update(from message: ReviewerMessage) {
-        if plain != message.text {
-            plain = message.text
-            text = styled(message.text)
-        }
+        update(\.text, to: message.text)
         update(\.mark, to: message.mark)
         update(\.stamp, to: shownTime(of: message.at))
         update(\.reference, to: message.reference)
     }
+
+    func plan(at width: CGFloat) -> RowPlan {
+        if let plan = plans[width] {
+            return plan
+        }
+        let plan = DoorIntoSummer.plan(reviewer: self, width: width)
+        plans[width] = plan
+        return plan
+    }
+
+    var isUnplanned: Bool { plans.isEmpty }
+
+    func forgetPlans() {
+        plans = [:]
+    }
 }
 
 @MainActor
-@Observable
 final class WorkingModel: Identifiable, Settled {
     let id: String
     let session: String
@@ -106,6 +147,7 @@ final class WorkingModel: Identifiable, Settled {
     private(set) var subject: String
     private(set) var ratio: Ratio
     private(set) var job: Job?
+    private var plans: [CGFloat: RowPlan] = [:]
 
     init(_ working: WorkingPost) {
         id = working.id
@@ -120,6 +162,21 @@ final class WorkingModel: Identifiable, Settled {
         update(\.subject, to: working.subject)
         update(\.ratio, to: working.ratio)
         update(\.job, to: working.job)
+    }
+
+    func plan(at width: CGFloat) -> RowPlan {
+        if let plan = plans[width] {
+            return plan
+        }
+        let plan = DoorIntoSummer.plan(working: self, width: width)
+        plans[width] = plan
+        return plan
+    }
+
+    var isUnplanned: Bool { plans.isEmpty }
+
+    func forgetPlans() {
+        plans = [:]
     }
 }
 
@@ -150,6 +207,29 @@ enum RowModel {
         }
         return self
     }
+
+    func plan(at width: CGFloat, measured: [URL: Ratio]) -> RowPlan {
+        switch self {
+        case .post(let model): model.plan(at: width, measured: measured)
+        case .reviewer(let model): model.plan(at: width)
+        case .working(let model): model.plan(at: width)
+        }
+    }
+
+    fileprivate var model: any Settled {
+        switch self {
+        case .post(let model): model
+        case .reviewer(let model): model
+        case .working(let model): model
+        }
+    }
+
+    fileprivate func shows(_ url: URL) -> Bool {
+        if case .post(let model) = self {
+            return model.shows(url)
+        }
+        return false
+    }
 }
 
 @MainActor
@@ -161,7 +241,11 @@ final class ThreadStore {
     private(set) var ids: [String] = []
     private(set) var earlierPages = 0
     private(set) var sessions: [LiveSession] = []
+    private(set) var revision = 0
     @ObservationIgnored private(set) var models: [String: RowModel] = [:]
+    @ObservationIgnored private var windowWidth: CGFloat = 0
+    @ObservationIgnored private var measuredRatios: [URL: Ratio] = [:]
+    @ObservationIgnored private var changed: Set<String> = []
     @ObservationIgnored private(set) var cards: [Card] = []
     @ObservationIgnored private(set) var pending: [Pending] = []
     @ObservationIgnored private var validatedIDs: Set<String> = []
@@ -273,13 +357,73 @@ final class ThreadStore {
     }
 
     func mark(inspected id: String?) {
-        if let inspectedID, case .post(let previous)? = models[inspectedID] {
-            previous.mark(inspected: false)
+        let previous = inspectedID
+        if let inspectedID, case .post(let model)? = models[inspectedID] {
+            model.mark(inspected: false)
         }
-        if let id, case .post(let next)? = models[id] {
-            next.mark(inspected: true)
+        if let id, case .post(let model)? = models[id] {
+            model.mark(inspected: true)
         }
         inspectedID = id
+        replan([previous, id].compactMap { $0 })
+    }
+
+    func beginValidation(_ id: String) {
+        guard case .post(let model)? = models[id] else { return }
+        model.validation(running: true, refusal: nil)
+        replan([id])
+    }
+
+    func endValidation(_ id: String, refusal: String?) {
+        guard case .post(let model)? = models[id] else { return }
+        model.validation(running: false, refusal: refusal)
+        replan([id])
+    }
+
+    func resize(window width: CGFloat) {
+        guard width > 0, width != windowWidth else { return }
+        windowWidth = width
+        for model in models.values {
+            model.model.forgetPlans()
+            prepare(model)
+        }
+    }
+
+    func plan(of id: String, at width: CGFloat) -> RowPlan? {
+        models[id]?.plan(at: width, measured: measuredRatios)
+    }
+
+    func takeChanges() -> Set<String> {
+        defer { changed = [] }
+        return changed
+    }
+
+    func measured(_ url: URL, ratio: Ratio) {
+        guard measuredRatios[url] != ratio else { return }
+        measuredRatios[url] = ratio
+        replan(ids.filter { models[$0]?.shows(url) == true })
+    }
+
+    private var widths: [CGFloat] {
+        windowWidth > 0 ? [windowWidth, windowWidth - Layout.panelWidth] : []
+    }
+
+    private func replan(_ ids: [String]) {
+        for id in ids {
+            guard let model = models[id] else { continue }
+            model.model.forgetPlans()
+            prepare(model)
+            changed.insert(id)
+        }
+        if !ids.isEmpty {
+            revision += 1
+        }
+    }
+
+    private func prepare(_ model: RowModel) {
+        for width in widths {
+            _ = model.plan(at: width, measured: measuredRatios)
+        }
     }
 
     func shown(_ reference: Reference) -> ShownReference {
@@ -302,13 +446,24 @@ final class ThreadStore {
     private func reconcile() {
         let derived = messages(of: cards, pending: pending, validated: validatedIDs)
         var kept: [String: RowModel] = [:]
+        var touched = false
         for message in derived {
-            kept[message.id] = models[message.id]?.updated(from: message) ?? RowModel(message)
+            let model = models[message.id]?.updated(from: message) ?? RowModel(message)
+            if model.model.isUnplanned {
+                changed.insert(message.id)
+                touched = true
+            }
+            prepare(model)
+            kept[message.id] = model
         }
         models = kept
         let order = derived.map(\.id)
         if order != ids {
             ids = order
+            touched = true
+        }
+        if touched {
+            revision += 1
         }
         let live = cards.map { LiveSession(name: $0.session, subject: $0.subject) }
         if live != sessions {

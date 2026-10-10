@@ -74,3 +74,14 @@ Edges: TextLines needs Look; RowPlan needs TextLines, Ratio, Look, Thread; Threa
 | The chat bar's height | Feed | FeedTable | `onGeometryChange` |
 
 ## Amendments
+
+- The window width reaches the store from `PanelSlideView.layout()`, before the feed and the panel frames are placed, so the plans for both feed widths exist when the table lays out.
+- A plan's y runs down from the row's top; the row view stays unflipped and converts, so image layers keep their contents upright.
+- A button is a transparent `NSButton` over a title drawn by the row with `CTLine`, so every glyph stays on the 6.6 pt grid.
+- Validation in flight and its refusal move from `PostView`'s state into `PostModel`, since a reused row holds no state.
+- Thumbnails take their own cache of 40 beside the 5 display images, so a reference line never evicts a picture on screen.
+- The status row is planned by the controller from `Chat.connection`, since it is no row of the thread.
+- The prefetch range is clamped to the table's rows, the status row included.
+- The wrapper counts a word's spaces in the line width, since the next word must fit after them.
+- `Chat.validate` keeps returning the refusal for the CLI, and sets the model's state beside it.
+- `styled(_:)` goes with the AttributedString of `ReviewerModel`; `ReviewerModel` and `WorkingModel` drop `@Observable`, which had no reader left.

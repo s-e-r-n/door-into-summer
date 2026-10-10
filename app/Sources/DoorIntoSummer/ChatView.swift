@@ -2,15 +2,13 @@ import SwiftUI
 
 struct ChatView: View {
     let chat: Chat
-    @State private var position = ScrollPosition()
-    @State private var window = PageWindow()
     @State private var cursor = CursorOwner()
 
     private var open: Bool { chat.inspected != nil }
 
     var body: some View {
-        PanelSlide(open: open, cursor: cursor) {
-            hostingRoot(feed.safeAreaInset(edge: .bottom, spacing: 0) { ChatBar(chat: chat) })
+        PanelSlide(open: open, cursor: cursor, resized: { chat.thread.resize(window: $0) }) {
+            hostingRoot(Feed(chat: chat, cursor: cursor))
         } panel: {
             hostingRoot(panel)
         }
@@ -36,69 +34,31 @@ struct ChatView: View {
             .environment(\.images, chat.images)
             .environment(\.cursorOwner, cursor)
     }
+}
 
-    private var feed: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(chat.thread.shownIDs, id: \.self) { id in
-                    row(id)
-                }
-                status
+private struct Feed: View {
+    let chat: Chat
+    let cursor: CursorOwner
+    @State private var barHeight: CGFloat = 0
+
+    var body: some View {
+        FeedTable(chat: chat, cursor: cursor, revision: chat.thread.revision, status: status, summons: chat.summons,
+                  running: chat.connection == .live, bottomInset: barHeight)
+            .overlay(alignment: .bottom) {
+                ChatBar(chat: chat).onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
             }
-            .padding(.top, 12)
-        }
-        .scrollIndicators(.hidden)
-        .scrollPosition($position)
-        .defaultScrollAnchor(.bottom)
-        .defaultScrollAnchor(.bottom, for: .sizeChanges)
-        .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { before, now in
-            paged(from: before, to: now)
-            cursor.refresh()
-        }
-        .onChange(of: chat.summons) { _, summons in
-            if let summons {
-                position.scrollTo(id: summons.post, anchor: .top)
-            }
-        }
     }
 
-    private func paged(from before: ScrollGeometry, to now: ScrollGeometry) {
-        let thread = chat.thread
-        switch window.scrolled(from: before, to: now, hasEarlierPage: thread.hasEarlierPage, showsEarlierPages: thread.earlierPages > 0) {
-        case .showEarlierPage:
-            thread.showEarlierPage()
-        case .showLastPage:
-            thread.showLastPage()
-        case .scrollTo(let offset):
-            position.scrollTo(y: offset)
-        case nil:
-            break
-        }
-    }
-
-    @ViewBuilder private func row(_ id: String) -> some View {
-        switch chat.thread.models[id] {
-        case .reviewer(let message):
-            ReviewerMessageView(message: message)
-        case .post(let post):
-            PostView(post: post)
-        case .working(let working):
-            WorkingPostView(working: working)
-        case nil:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder private var status: some View {
+    private var status: Status? {
         switch chat.connection {
         case .connecting:
-            StatusLine(text: "Connecting to the review server at \(chat.serverAddress).", alert: false)
+            Status(text: "Connecting to the review server at \(chat.serverAddress).", alert: false)
         case .lost:
-            StatusLine(text: "The server stopped answering. The chat reconnects on its own.", alert: true)
+            Status(text: "The server stopped answering. The chat reconnects on its own.", alert: true)
         case .live where chat.thread.sessions.isEmpty:
-            StatusLine(text: "No live image session.", alert: false)
+            Status(text: "No live image session.", alert: false)
         case .live:
-            EmptyView()
+            nil
         }
     }
 }

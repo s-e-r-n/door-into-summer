@@ -22,7 +22,25 @@ extension Font {
 @MainActor
 enum Mono {
     static let font = NSFont(name: "JetBrainsMono-Thin", size: 11) ?? .monospacedSystemFont(ofSize: 11, weight: .thin)
+    static let italic = NSFont(name: "JetBrainsMono-ThinItalic", size: 11) ?? font
     static let characterWidth = font.maximumAdvancement.width
+    static let lineHeight = font.ascender - font.descender + font.leading
+    static let ascender = font.ascender
+}
+
+struct TextStyle: Hashable {
+    let font: NSFont
+    let color: NSColor
+
+    @MainActor static let text = TextStyle(font: Mono.font, color: NSColor(Color.foreground))
+    @MainActor static let faint = TextStyle(font: Mono.font, color: NSColor(Color.tertiaryText))
+    @MainActor static let session = TextStyle(font: Mono.italic, color: NSColor(Color.secondaryText))
+    @MainActor static let reviewer = TextStyle(font: Mono.italic, color: .white)
+    @MainActor static let reference = TextStyle(font: Mono.italic, color: NSColor(Color.tertiaryText))
+    @MainActor static let mention = TextStyle(font: Mono.italic, color: NSColor(Color.mention))
+    @MainActor static let command = TextStyle(font: Mono.font, color: NSColor(Color.command))
+    @MainActor static let lit = TextStyle(font: Mono.font, color: NSColor(Color.lit))
+    @MainActor static let alert = TextStyle(font: Mono.font, color: NSColor(Color.alert))
 }
 
 enum Layout {

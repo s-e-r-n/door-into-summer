@@ -8,11 +8,12 @@ private let slideKey = "slide"
 struct PanelSlide<Feed: View, Panel: View>: NSViewRepresentable {
     let open: Bool
     let cursor: CursorOwner
+    let resized: (CGFloat) -> Void
     @ViewBuilder let feed: () -> Feed
     @ViewBuilder let panel: () -> Panel
 
     func makeNSView(context: Context) -> PanelSlideView<Feed, Panel> {
-        PanelSlideView(feed: feed(), panel: panel(), cursor: cursor)
+        PanelSlideView(feed: feed(), panel: panel(), cursor: cursor, resized: resized)
     }
 
     func updateNSView(_ view: PanelSlideView<Feed, Panel>, context: Context) {
@@ -25,12 +26,14 @@ final class PanelSlideView<Feed: View, Panel: View>: NSView {
     private let feed: NSHostingView<Feed>
     private let panel: NSHostingView<Panel>
     private let cursor: CursorOwner
+    private let resized: (CGFloat) -> Void
     private var open = false
 
-    init(feed: Feed, panel: Panel, cursor: CursorOwner) {
+    init(feed: Feed, panel: Panel, cursor: CursorOwner, resized: @escaping (CGFloat) -> Void) {
         self.feed = Self.hosting(feed)
         self.panel = Self.hosting(panel)
         self.cursor = cursor
+        self.resized = resized
         super.init(frame: .zero)
         wantsLayer = true
         addSubview(self.feed)
@@ -67,6 +70,7 @@ final class PanelSlideView<Feed: View, Panel: View>: NSView {
 
     override func layout() {
         super.layout()
+        resized(bounds.width)
         feed.frame = feedFrame
         panel.frame = panelFrame
     }

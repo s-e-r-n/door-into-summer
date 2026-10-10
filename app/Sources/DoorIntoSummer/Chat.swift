@@ -93,13 +93,17 @@ final class Chat {
         return refusals.isEmpty ? nil : refusals.joined(separator: " ")
     }
 
+    @discardableResult
     func validate(_ post: PostModel) async -> String? {
+        thread.beginValidation(post.id)
         switch await server.validate(Validation(session: post.session, attempt: post.attempt)) {
         case .filed(let file):
             thread.validated(post.id)
             filed[post.id] = file
+            thread.endValidation(post.id, refusal: nil)
             return nil
         case .refused(let reason):
+            thread.endValidation(post.id, refusal: reason)
             return reason
         }
     }
