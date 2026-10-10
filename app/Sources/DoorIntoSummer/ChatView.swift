@@ -8,36 +8,31 @@ struct ChatView: View {
     private var open: Bool { chat.inspected != nil }
 
     var body: some View {
-        HStack(spacing: 0) {
-            feed
-                .safeAreaInset(edge: .bottom, spacing: 0) { ChatBar(chat: chat) }
-            if open {
-                Color.separator.frame(width: 1).transition(.identity)
-            }
-            panel
+        PanelSlide(open: open) {
+            hostingRoot(feed.safeAreaInset(edge: .bottom, spacing: 0) { ChatBar(chat: chat) })
+        } panel: {
+            hostingRoot(panel)
         }
-        .animation(Layout.panelMotion, value: open)
-        .overlay(alignment: .top) { TitleBar() }
         .background { WindowChrome().frame(width: 0, height: 0) }
-        .font(.mono)
-        .foregroundStyle(Color.foreground)
-        .background(Color.desk)
-        .environment(chat)
-        .environment(\.images, chat.images)
         .task { await chat.start() }
     }
 
     @ViewBuilder private var panel: some View {
-        Group {
-            if open, let post = chat.lastInspected {
-                MetadataPanel(post: post).transition(.identity)
-            } else {
-                Color.desk
-            }
+        if let post = chat.lastInspected {
+            MetadataPanel(post: post).overlay(alignment: .leading) { Color.separator.frame(width: 1) }
+        } else {
+            Color.desk
         }
-        .frame(width: Layout.panelWidth)
-        .frame(width: open ? Layout.panelWidth : 0, alignment: .leading)
-        .clipped()
+    }
+
+    private func hostingRoot<Content: View>(_ content: Content) -> some View {
+        content
+            .overlay(alignment: .top) { TitleBar() }
+            .font(.mono)
+            .foregroundStyle(Color.foreground)
+            .background(Color.desk)
+            .environment(chat)
+            .environment(\.images, chat.images)
     }
 
     private var feed: some View {

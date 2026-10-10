@@ -28,7 +28,6 @@ enum Mono {
 enum Layout {
     static let horizontalPadding: CGFloat = 32
     static let panelWidth: CGFloat = 400
-    static let panelMotion = Animation.timingCurve(0.25, 0.1, 0.25, 1, duration: 0.22)
     static let barWidth: CGFloat = 847
     static let barHeight: CGFloat = 32
     static let barInset: CGFloat = 11
