@@ -51,10 +51,8 @@ private struct Feed: View {
 
     private var status: Status? {
         switch chat.connection {
-        case .connecting:
-            Status(text: "Connecting to the review server at \(chat.serverAddress).", alert: false)
-        case .lost:
-            Status(text: "The server stopped answering. The chat reconnects on its own.", alert: true)
+        case .reading:
+            Status(text: "Reading the live image sessions.", alert: false)
         case .live where chat.thread.sessions.isEmpty:
             Status(text: "No live image session.", alert: false)
         case .live:

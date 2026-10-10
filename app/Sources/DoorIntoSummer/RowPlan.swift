@@ -115,10 +115,10 @@ func plan(status text: String, alert: Bool, width: CGFloat) -> RowPlan {
 private func figures(of post: PostModel, measured: [URL: Ratio]) -> [Figure] {
     var figures: [Figure] = []
     if let original = post.original {
-        figures.append(Figure(url: original.url, ratio: original.pixels?.ratio ?? measured[original.url], caption: original.label))
+        figures.append(Figure(url: original.url, ratio: measured[original.url], caption: original.label))
     }
     if let generation = post.generation {
-        figures.append(Figure(url: generation.url, ratio: generation.pixels?.ratio ?? post.job?.ratio ?? measured[generation.url],
+        figures.append(Figure(url: generation.url, ratio: post.job?.ratio ?? measured[generation.url],
                               caption: post.original == nil ? nil : generation.label))
     }
     return figures
@@ -128,7 +128,7 @@ private func figures(of post: PostModel, measured: [URL: Ratio]) -> [Figure] {
 private func buttons(of post: PostModel) -> [ButtonSpec] {
     [
         ButtonSpec(title: "copy prompt", style: .faint, action: post.job?.prompt.map { .copyPrompt($0) }),
-        ButtonSpec(title: "use as reference", style: .faint, action: post.job == nil ? nil : .attach(post.id)),
+        ButtonSpec(title: "use as reference", style: .faint, action: post.jobID == nil ? nil : .attach(post.id)),
         ButtonSpec(title: "details", style: post.isInspected ? .text : .faint, action: .inspect(post.id)),
         ButtonSpec(title: post.validated ? "validated" : "validate", style: post.validated ? .lit : .faint,
                    action: post.validated || post.validating ? nil : .validate(post.id)),

@@ -5,12 +5,6 @@ struct Delivery: Equatable, Sendable {
     let session: String
     let subject: String
     let attempt: Int
-
-    init(of card: Card) {
-        session = card.session
-        subject = card.subject
-        attempt = card.attempt
-    }
 }
 
 @MainActor
@@ -38,6 +32,7 @@ final class PostModel: Identifiable, Settled {
     private(set) var stamp: String
     private(set) var original: Picture?
     private(set) var generation: Picture?
+    private(set) var jobID: String?
     private(set) var job: Job?
     private(set) var validated: Bool
     private(set) var isInspected = false
@@ -53,6 +48,7 @@ final class PostModel: Identifiable, Settled {
         stamp = shownTime(of: post.at)
         original = post.original
         generation = post.generation
+        jobID = post.jobID
         job = post.job
         validated = post.validated
     }
@@ -62,6 +58,7 @@ final class PostModel: Identifiable, Settled {
         update(\.stamp, to: shownTime(of: post.at))
         update(\.original, to: post.original)
         update(\.generation, to: post.generation)
+        update(\.jobID, to: post.jobID)
         update(\.job, to: post.job)
         update(\.validated, to: post.validated)
     }
@@ -247,10 +244,16 @@ final class ThreadStore {
     @ObservationIgnored private var measuredRatios: [URL: Ratio] = [:]
     @ObservationIgnored private var changed: Set<String> = []
     @ObservationIgnored private(set) var cards: [Card] = []
+    @ObservationIgnored private var live: [String] = []
+    @ObservationIgnored private var records: [String: SessionRecord] = [:]
+    @ObservationIgnored private var feedbacks: [String: [Int: Said]] = [:]
+    @ObservationIgnored private var jobs: [String: Job?] = [:]
+    @ObservationIgnored private var filed: Set<String> = []
+    @ObservationIgnored private var settled = false
     @ObservationIgnored private(set) var pending: [Pending] = []
     @ObservationIgnored private var validatedIDs: Set<String> = []
     @ObservationIgnored private var inspectedID: String?
-    @ObservationIgnored private var firstReadySince: Date? = .now - ThreadStore.launchWindow
+    @ObservationIgnored private let launchedAt = Date.now
 
     var shownIDs: ArraySlice<String> {
         ids[pageStart...]
@@ -296,39 +299,53 @@ final class ThreadStore {
     }
 
     @discardableResult
-    func apply(_ event: ServerEvent) -> [Delivery] {
+    func apply(_ change: BoardChange) -> [Delivery] {
         var deliveries: [Delivery] = []
-        switch event {
-        case .ready(let listed):
-            deliveries = firstReadySince.map { since in listed.filter { delivered($0, since: since) }.map(Delivery.init(of:)) } ?? []
-            firstReadySince = nil
-            cards = listed
-        case .sessionUpdate(let card):
-            let index = cards.firstIndex { $0.session == card.session }
-            deliveries = generated(from: index.map { cards[$0] }, to: card) ? [Delivery(of: card)] : []
-            if let index {
-                cards[index] = card
-            } else {
-                cards.insert(card, at: 0)
+        switch change {
+        case .sessions(let names):
+            live = names
+            records = records.filter { names.contains($0.key) }
+            feedbacks = feedbacks.filter { names.contains($0.key) }
+        case .attempt(let name, let attempt):
+            if generated(attempt, after: records[name]) {
+                deliveries = [Delivery(session: name, subject: attempt.subject, attempt: attempt.number)]
             }
-        case .sessionDelete(let session):
-            cards.removeAll { $0.session == session }
-        case .lost:
-            return []
+            records[name] = record(of: name, showing: attempt)
+            if !live.contains(name) {
+                live.insert(name, at: 0)
+            }
+        case .feedback(let name, let said):
+            feedbacks[name, default: [:]][said.number] = said
+        case .job(let id, let job):
+            jobs[id] = .some(job)
+        case .filed(let keys):
+            filed = keys
+        case .settled:
+            settled = true
         }
+        cards = live.compactMap { records[$0] }.map { card(of: $0, feedbacks: feedbacks[$0.name] ?? [:], jobs: jobs, filed: filed) }
         let known = Set(cards.flatMap { card in card.feedbacks.map { "\(card.session)#\($0.number)" } })
         pending.removeAll { sent in sent.number.map { known.contains("\(sent.session)#\($0)") } ?? false }
         reconcile()
         return deliveries
     }
 
-    private func generated(from held: Card?, to card: Card) -> Bool {
-        held.map { $0.working != nil && card.attempt > $0.attempt } ?? true
+    private func generated(_ attempt: Attempt, after held: SessionRecord?) -> Bool {
+        guard settled else { return attempt.at >= launchedAt - Self.launchWindow }
+        return held.map { $0.current.working != nil && attempt.number > $0.current.number } ?? true
     }
 
-    private func delivered(_ card: Card, since moment: Date) -> Bool {
-        let shown = card.answers.last { $0.attempt == card.attempt }
-        return shown?.seen.map { $0.at >= moment } ?? false
+    private func record(of name: String, showing attempt: Attempt) -> SessionRecord {
+        var record = records[name] ?? SessionRecord(name: name, current: attempt, attempts: [:])
+        record.current = attempt
+        record.attempts[attempt.number] = record.attempts[attempt.number].map { kept($0, or: attempt) } ?? attempt
+        return record
+    }
+
+    private func kept(_ held: Attempt, or attempt: Attempt) -> Attempt {
+        let unchanged = Attempt(subject: attempt.subject, number: attempt.number, generation: attempt.generation, original: attempt.original,
+                                job: attempt.job, working: held.working, at: held.at) == held
+        return unchanged ? held : attempt
     }
 
     func place(_ sent: Pending) {
