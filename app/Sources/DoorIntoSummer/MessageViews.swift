@@ -5,7 +5,7 @@ struct Stamp: View {
     let text: String
 
     var body: some View {
-        Text(text).monospacedDigit().foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+        Text(text).monospacedDigit().foregroundStyle(Color.tertiaryText)
     }
 }
 
@@ -27,7 +27,6 @@ struct SettingsLine: View {
     var body: some View {
         Text("└ \(job?.model ?? "model unavailable") · \(job?.aspect ?? "ratio unavailable") · \(job?.quality ?? "quality unavailable") · batch \(job?.batch.map(String.init) ?? "unavailable")")
             .foregroundStyle(Color.tertiaryText)
-            .textSelection(.enabled)
             .padding(.leading, 7)
             .padding(.top, -8)
     }
@@ -60,7 +59,6 @@ struct ReferenceLine: View {
             }
         }
         .foregroundStyle(Color.tertiaryText)
-        .textSelection(.enabled)
     }
 }
 
@@ -106,7 +104,6 @@ struct ReviewerMessageView: View {
                 ReferenceLine(reference: reference, thumbnail: 32)
             }
         }
-        .textSelection(.enabled)
     }
 }
 
@@ -120,12 +117,12 @@ struct PostView: View {
         Row(highlighted: false, inset: post.isInspected) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 SessionName(session: post.session) { chat.compose(tagging: $0) }
-                Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+                Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText)
                 Spacer()
                 Stamp(text: post.stamp)
             }
             SettingsLine(job: post.job)
-            Text(post.subject).textSelection(.enabled)
+            Text(post.subject)
             figures
             HStack(spacing: 20) {
                 Button("copy prompt") { copyPrompt() }.disabled(post.job?.prompt == nil)
@@ -135,7 +132,7 @@ struct PostView: View {
                     .disabled(post.validated || validating)
                     .foregroundStyle(post.validated ? Color.lit : Color.tertiaryText)
                 if let refusal {
-                    Text(refusal).foregroundStyle(Color.alert).textSelection(.enabled)
+                    Text(refusal).foregroundStyle(Color.alert)
                 }
             }
             .buttonStyle(.pointing)
@@ -179,11 +176,11 @@ struct WorkingPostView: View {
         Row(highlighted: false, inset: false) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 SessionName(session: working.session) { chat.compose(tagging: $0) }
-                Text("image generation \(working.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+                Text("image generation \(working.attempt)").foregroundStyle(Color.tertiaryText)
                 Spacer()
             }
             SettingsLine(job: working.job)
-            Text(working.subject).textSelection(.enabled)
+            Text(working.subject)
             Skeleton(ratio: working.ratio, running: running)
         }
     }
@@ -195,7 +192,7 @@ struct StatusLine: View {
 
     var body: some View {
         Row(highlighted: false, inset: false) {
-            Text(text).foregroundStyle(alert ? Color.alert : Color.tertiaryText).textSelection(.enabled)
+            Text(text).foregroundStyle(alert ? Color.alert : Color.tertiaryText)
         }
     }
 }

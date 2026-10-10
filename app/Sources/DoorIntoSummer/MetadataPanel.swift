@@ -34,16 +34,16 @@ struct MetadataPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text("@\(post.session)").font(.monoItalic).textSelection(.enabled)
-                    Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
+                    Text("@\(post.session)").font(.monoItalic)
+                    Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText)
                     Spacer()
                     Button("×") { chat.inspect(nil) }.buttonStyle(.pointing).foregroundStyle(Color.tertiaryText)
                 }
                 Grid(alignment: .topLeading, horizontalSpacing: 7, verticalSpacing: 6) {
                     ForEach(fields(of: post)) { field in
                         GridRow {
-                            Text(field.key).foregroundStyle(Color.tertiaryText).lineLimit(1).textSelection(.enabled).frame(width: 100, alignment: .leading)
-                            Text(field.value).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                            Text(field.key).foregroundStyle(Color.tertiaryText).lineLimit(1).frame(width: 100, alignment: .leading)
+                            Text(field.value).frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }

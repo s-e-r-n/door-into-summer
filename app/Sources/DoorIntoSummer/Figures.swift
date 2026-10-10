@@ -39,7 +39,6 @@ struct Figure: View {
                 Text(caption).foregroundStyle(Color.tertiaryText)
             }
         }
-        .textSelection(.enabled)
         .task(id: picture.url) {
             loaded = await images.image(for: picture.url).map(Loaded.image) ?? .unavailable
         }
@@ -83,7 +82,6 @@ struct Skeleton: View {
             .overlay(alignment: .bottomTrailing) {
                 Text(ratio.label)
                     .foregroundStyle(Color.tertiaryText)
-                    .textSelection(.enabled)
                     .padding(.trailing, 12)
                     .padding(.bottom, 10)
             }
