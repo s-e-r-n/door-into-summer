@@ -38,6 +38,7 @@ final class PostModel: Identifiable, Settled {
     private(set) var isInspected = false
     private(set) var validating = false
     private(set) var refusal: String?
+    @ObservationIgnored private var at: Date?
     @ObservationIgnored private var plans: [CGFloat: RowPlan] = [:]
 
     init(_ post: Post) {
@@ -45,6 +46,7 @@ final class PostModel: Identifiable, Settled {
         session = post.session
         attempt = post.attempt
         subject = post.subject
+        at = post.at
         stamp = shownTime(of: post.at)
         original = post.original
         generation = post.generation
@@ -55,7 +57,10 @@ final class PostModel: Identifiable, Settled {
 
     fileprivate func update(from post: Post) {
         update(\.subject, to: post.subject)
-        update(\.stamp, to: shownTime(of: post.at))
+        if post.at != at {
+            at = post.at
+            update(\.stamp, to: shownTime(of: post.at))
+        }
         update(\.original, to: post.original)
         update(\.generation, to: post.generation)
         update(\.jobID, to: post.jobID)
@@ -101,6 +106,7 @@ final class ReviewerModel: Identifiable, Settled {
     private(set) var mark: TickMark
     private(set) var stamp: String
     private(set) var reference: ShownReference?
+    private var at: Date
     private var plans: [CGFloat: RowPlan] = [:]
 
     init(_ message: ReviewerMessage) {
@@ -109,6 +115,7 @@ final class ReviewerModel: Identifiable, Settled {
         attempt = message.attempt
         text = message.text
         mark = message.mark
+        at = message.at
         stamp = shownTime(of: message.at)
         reference = message.reference
     }
@@ -116,7 +123,10 @@ final class ReviewerModel: Identifiable, Settled {
     fileprivate func update(from message: ReviewerMessage) {
         update(\.text, to: message.text)
         update(\.mark, to: message.mark)
-        update(\.stamp, to: shownTime(of: message.at))
+        if message.at != at {
+            at = message.at
+            update(\.stamp, to: shownTime(of: message.at))
+        }
         update(\.reference, to: message.reference)
     }
 
@@ -236,18 +246,26 @@ final class ThreadStore {
     private static let launchWindow: TimeInterval = 60
 
     private(set) var ids: [String] = []
+    private(set) var pageStart = 0
     private(set) var earlierPages = 0
     private(set) var sessions: [LiveSession] = []
     @ObservationIgnored private(set) var models: [String: RowModel] = [:]
+    @ObservationIgnored private var keys: [OrderKey] = []
+    @ObservationIgnored private var listed: [String: [Entry]] = [:]
+    @ObservationIgnored private var waitingIDs: [String] = []
     @ObservationIgnored private var windowWidth: CGFloat = 0
     @ObservationIgnored private var measuredRatios: [URL: Ratio] = [:]
     private var changed: Set<String> = []
-    @ObservationIgnored private(set) var cards: [Card] = []
+    @ObservationIgnored private(set) var cards: [String: Card] = [:]
     @ObservationIgnored private var live: [String] = []
     @ObservationIgnored private var records: [String: SessionRecord] = [:]
     @ObservationIgnored private var feedbacks: [String: [Int: Said]] = [:]
     @ObservationIgnored private var jobs: [String: Job?] = [:]
     @ObservationIgnored private var filed: Set<String> = []
+    @ObservationIgnored private var owners: [String: Owner] = [:]
+    @ObservationIgnored private var owned: [String: Set<String>] = [:]
+    @ObservationIgnored private var referrers: [String: Set<String>] = [:]
+    @ObservationIgnored private var refersTo: [String: Set<String>] = [:]
     @ObservationIgnored private var settled = false
     @ObservationIgnored private(set) var pending: [Pending] = []
     @ObservationIgnored private var validatedIDs: Set<String> = []
@@ -258,20 +276,6 @@ final class ThreadStore {
         ids[pageStart...]
     }
 
-    private var pageStart: Int {
-        let wanted = Self.postsPerPage * (earlierPages + 1)
-        var posts = 0
-        for index in ids.indices.reversed() {
-            if case .post? = models[ids[index]] {
-                posts += 1
-            }
-            if posts == wanted {
-                return index
-            }
-        }
-        return 0
-    }
-
     var hasEarlierPage: Bool {
         pageStart > 0
     }
@@ -279,21 +283,24 @@ final class ThreadStore {
     func showEarlierPage() {
         if hasEarlierPage {
             earlierPages += 1
+            repage()
         }
     }
 
     func showLastPage() {
         if earlierPages != 0 {
             earlierPages = 0
+            repage()
         }
     }
 
     func showPage(holding id: String) {
         guard let index = ids.firstIndex(of: id) else { return }
-        let posts = ids[index...].count { if case .post? = models[$0] { true } else { false } }
+        let posts = ids[index...].count { isPost($0) }
         let pages = (posts - 1) / Self.postsPerPage
         if pages > earlierPages {
             earlierPages = pages
+            repage()
         }
     }
 
@@ -302,9 +309,7 @@ final class ThreadStore {
         var deliveries: [Delivery] = []
         switch change {
         case .sessions(let names):
-            live = names
-            records = records.filter { names.contains($0.key) }
-            feedbacks = feedbacks.filter { names.contains($0.key) }
+            relist(names)
         case .attempt(let name, let attempt):
             if generated(attempt, after: records[name]) {
                 deliveries = [Delivery(session: name, subject: attempt.subject, attempt: attempt.number)]
@@ -313,19 +318,24 @@ final class ThreadStore {
             if !live.contains(name) {
                 live.insert(name, at: 0)
             }
+            refresh(name)
         case .feedback(let name, let said):
             feedbacks[name, default: [:]][said.number] = said
+            refresh(name)
         case .job(let id, let job):
             jobs[id] = .some(job)
+            if let owner = owners[StoreFile.jobKey(id)] {
+                refresh(owner.session)
+            }
         case .filed(let keys):
+            let moved = filed.symmetricDifference(keys)
             filed = keys
+            for name in Set(moved.compactMap { owners[$0]?.session }) {
+                refresh(name)
+            }
         case .settled:
             settled = true
         }
-        cards = live.compactMap { records[$0] }.map { card(of: $0, feedbacks: feedbacks[$0.name] ?? [:], jobs: jobs, filed: filed) }
-        let known = Set(cards.flatMap { card in card.feedbacks.map { "\(card.session)#\($0.number)" } })
-        pending.removeAll { sent in sent.number.map { known.contains("\(sent.session)#\($0)") } ?? false }
-        reconcile()
         return deliveries
     }
 
@@ -347,29 +357,201 @@ final class ThreadStore {
         return unchanged ? held : attempt
     }
 
+    private func relist(_ names: [String]) {
+        let gone = live.filter { !names.contains($0) }
+        live = names
+        records = records.filter { names.contains($0.key) }
+        feedbacks = feedbacks.filter { names.contains($0.key) }
+        for name in gone {
+            forget(name)
+        }
+    }
+
+    private func refresh(_ name: String) {
+        guard let record = records[name], live.contains(name) else { return }
+        let card = card(of: record, feedbacks: feedbacks[name] ?? [:], jobs: jobs, filed: filed)
+        cards[name] = card
+        let waitingBefore = pending.count
+        pending.removeAll { $0.session == name && $0.number.map { number in card.feedbacks.contains { $0.number == number } } ?? false }
+        let moved = claim(DoorIntoSummer.owners(of: card), by: name)
+        refer(referencedJobs(of: card), from: name)
+        replace(listed[name] ?? [], with: placed(of: card, owners: owners, validated: validatedIDs), of: name)
+        list(LiveSession(name: name, subject: card.subject))
+        if pending.count != waitingBefore || pending.contains(where: { refers($0, to: moved) }) {
+            rewait()
+        }
+        for other in Set(moved.flatMap { referrers[$0] ?? [] }) where other != name {
+            refresh(other)
+        }
+    }
+
+    private func forget(_ name: String) {
+        for entry in listed[name] ?? [] {
+            remove(entry)
+            models[entry.id] = nil
+        }
+        listed[name] = nil
+        cards[name] = nil
+        let moved = claim([:], by: name)
+        refer([], from: name)
+        sessions.removeAll { $0.name == name }
+        repage()
+        if pending.contains(where: { refers($0, to: moved) }) {
+            rewait()
+        }
+        for other in Set(moved.flatMap { referrers[$0] ?? [] }) {
+            refresh(other)
+        }
+    }
+
+    private func refers(_ sent: Pending, to keys: Set<String>) -> Bool {
+        sent.reference.map { keys.contains(StoreFile.jobKey($0.job)) } ?? false
+    }
+
+    private func claim(_ claimed: [String: Owner], by name: String) -> Set<String> {
+        var moved: Set<String> = []
+        for key in owned[name] ?? [] where claimed[key] == nil {
+            owners[key] = nil
+            moved.insert(key)
+        }
+        for (key, owner) in claimed where owners[key] != owner {
+            owners[key] = owner
+            moved.insert(key)
+        }
+        owned[name] = Set(claimed.keys)
+        return moved
+    }
+
+    private func refer(_ keys: Set<String>, from name: String) {
+        for key in refersTo[name] ?? [] where !keys.contains(key) {
+            referrers[key]?.remove(name)
+        }
+        for key in keys {
+            referrers[key, default: []].insert(name)
+        }
+        refersTo[name] = keys
+    }
+
+    private func replace(_ old: [Entry], with placed: [(entry: Entry, message: Message)], of name: String) {
+        let incoming = Dictionary(uniqueKeysWithValues: placed.map { ($0.entry.id, $0.entry) })
+        let held = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0) })
+        for entry in old where incoming[entry.id] != entry {
+            remove(entry)
+        }
+        for (entry, message) in placed {
+            settle(message)
+            if held[entry.id] != entry {
+                insert(entry)
+            }
+        }
+        for entry in old where incoming[entry.id] == nil {
+            models[entry.id] = nil
+        }
+        listed[name] = placed.map(\.entry)
+        repage()
+    }
+
+    private func settle(_ message: Message) {
+        let model = models[message.id]?.updated(from: message) ?? RowModel(message)
+        if model.model.isUnplanned {
+            changed.insert(message.id)
+        }
+        prepare(model)
+        models[message.id] = model
+    }
+
+    private func insert(_ entry: Entry) {
+        let index = upperBound(of: entry.key, in: keys)
+        keys.insert(entry.key, at: index)
+        ids.insert(entry.id, at: index)
+    }
+
+    private func remove(_ entry: Entry) {
+        var index = lowerBound(of: entry.key, in: keys)
+        while index < keys.count, keys[index] == entry.key, ids[index] != entry.id {
+            index += 1
+        }
+        guard index < keys.count, ids[index] == entry.id else { return }
+        keys.remove(at: index)
+        ids.remove(at: index)
+    }
+
+    private func rewait() {
+        let messages = waiting(pending, owners: owners)
+        let staying = Set(messages.map(\.id))
+        for id in waitingIDs where !staying.contains(id) {
+            models[id] = nil
+        }
+        ids.removeLast(waitingIDs.count)
+        waitingIDs = messages.map(\.id)
+        for message in messages {
+            settle(message)
+        }
+        ids.append(contentsOf: waitingIDs)
+        repage()
+    }
+
+    private func list(_ session: LiveSession) {
+        if let index = sessions.firstIndex(where: { $0.name == session.name }) {
+            if sessions[index] != session {
+                sessions[index] = session
+            }
+            return
+        }
+        let before = live.prefix { $0 != session.name }.count { cards[$0] != nil }
+        sessions.insert(session, at: min(before, sessions.count))
+    }
+
+    private func repage() {
+        let wanted = Self.postsPerPage * (earlierPages + 1)
+        var posts = 0
+        var start = 0
+        for index in ids.indices.reversed() {
+            if isPost(ids[index]) {
+                posts += 1
+            }
+            if posts == wanted {
+                start = index
+                break
+            }
+        }
+        if start != pageStart {
+            pageStart = start
+        }
+    }
+
+    private func isPost(_ id: String) -> Bool {
+        if case .post? = models[id] {
+            return true
+        }
+        return false
+    }
+
     func place(_ sent: Pending) {
         pending.append(sent)
-        reconcile()
+        rewait()
     }
 
     func numbered(_ id: UUID, _ number: Int) {
         guard let index = pending.firstIndex(where: { $0.id == id }) else { return }
         pending[index].number = number
         let session = pending[index].session
-        if cards.contains(where: { $0.session == session && $0.feedbacks.contains { $0.number == number } }) {
+        if cards[session]?.feedbacks.contains(where: { $0.number == number }) == true {
             pending.remove(at: index)
         }
-        reconcile()
+        rewait()
     }
 
     func remove(_ id: UUID) {
         pending.removeAll { $0.id == id }
-        reconcile()
+        rewait()
     }
 
     func validated(_ postID: String) {
         validatedIDs.insert(postID)
-        reconcile()
+        if case .post(let model)? = models[postID] {
+            refresh(model.session)
+        }
     }
 
     func mark(inspected id: String?) {
@@ -440,41 +622,45 @@ final class ThreadStore {
     }
 
     func shown(_ reference: Reference) -> ShownReference {
-        DoorIntoSummer.shown(reference, in: cards)
+        DoorIntoSummer.shown(reference, owners: owners)
     }
 
     func attempt(of session: String) -> Int? {
-        cards.first { $0.session == session }?.attempt
+        cards[session]?.attempt
     }
 
     func post(session: String, attempt: Int) -> PostModel? {
-        for id in ids {
-            if case .post(let post)? = models[id], post.session == session, post.attempt == attempt {
-                return post
-            }
+        if case .post(let post)? = models[postID(session: session, attempt: attempt)] {
+            return post
         }
         return nil
     }
+}
 
-    private func reconcile() {
-        let derived = messages(of: cards, pending: pending, validated: validatedIDs)
-        var kept: [String: RowModel] = [:]
-        for message in derived {
-            let model = models[message.id]?.updated(from: message) ?? RowModel(message)
-            if model.model.isUnplanned {
-                changed.insert(message.id)
-            }
-            prepare(model)
-            kept[message.id] = model
-        }
-        models = kept
-        let order = derived.map(\.id)
-        if order != ids {
-            ids = order
-        }
-        let live = cards.map { LiveSession(name: $0.session, subject: $0.subject) }
-        if live != sessions {
-            sessions = live
+private func lowerBound(of key: OrderKey, in keys: [OrderKey]) -> Int {
+    var low = 0
+    var high = keys.count
+    while low < high {
+        let middle = (low + high) / 2
+        if keys[middle] < key {
+            low = middle + 1
+        } else {
+            high = middle
         }
     }
+    return low
+}
+
+private func upperBound(of key: OrderKey, in keys: [OrderKey]) -> Int {
+    var low = 0
+    var high = keys.count
+    while low < high {
+        let middle = (low + high) / 2
+        if keys[middle] <= key {
+            low = middle + 1
+        } else {
+            high = middle
+        }
+    }
+    return low
 }
