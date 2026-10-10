@@ -179,7 +179,6 @@ struct WorkingPostView: View {
         Row(highlighted: false, inset: false) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 SessionName(session: working.session) { chat.compose(tagging: $0) }
-                Spinner(running: running)
                 Text("image generation \(working.attempt)").foregroundStyle(Color.tertiaryText).textSelection(.enabled)
                 Spacer()
             }
