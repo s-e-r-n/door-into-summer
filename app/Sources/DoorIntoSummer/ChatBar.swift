@@ -67,7 +67,7 @@ struct ChatBar: View {
         HStack(spacing: 12) {
             if let attached = chat.attached {
                 HStack(spacing: 8) {
-                    ReferenceLine(reference: attached, thumbnail: 20)
+                    ReferenceLine(reference: attached)
                     Button("×") { chat.detach() }.buttonStyle(.pointing).foregroundStyle(Color.tertiaryText)
                 }
                 .frame(maxWidth: Layout.barWidth / 2, alignment: .leading)
@@ -135,5 +135,37 @@ struct ChatBar: View {
                 text = ""
             }
         }
+    }
+}
+
+private let thumbnailSide: CGFloat = 20
+
+private struct ReferenceLine: View {
+    let reference: ShownReference
+    @Environment(\.images) private var images
+    @State private var image: CGImage?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Group {
+                if let image {
+                    Image(decorative: image, scale: 1).resizable().scaledToFill()
+                } else {
+                    Color.reviewerRow
+                }
+            }
+            .frame(width: thumbnailSide, height: thumbnailSide)
+            .clipped()
+            .task(id: reference.url) {
+                let scale = NSScreen.main?.backingScaleFactor ?? 2
+                image = await images.thumbnail(for: reference.url, within: Int(thumbnailSide * scale))?.image
+            }
+            if let session = reference.session, let attempt = reference.attempt {
+                Text("\(Text("@\(session)").font(.monoItalic)) · image generation \(attempt)").lineLimit(1)
+            } else {
+                Text("job \(reference.job)").lineLimit(1)
+            }
+        }
+        .foregroundStyle(Color.tertiaryText)
     }
 }
