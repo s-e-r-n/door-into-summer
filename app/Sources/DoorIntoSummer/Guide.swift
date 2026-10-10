@@ -27,8 +27,6 @@ struct Guide: View {
         .padding(28)
         .font(.mono)
         .foregroundStyle(Color.foreground)
-        .containerBackground(Color.desk, for: .window)
-        .preferredColorScheme(.dark)
     }
 }
 

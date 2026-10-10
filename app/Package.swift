@@ -8,8 +8,7 @@ let package = Package(
         .executable(name: "DoorIntoSummer", targets: ["DoorIntoSummer"]),
     ],
     targets: [
-        .target(name: "NativeWindow"),
-        .executableTarget(name: "DoorIntoSummer", dependencies: ["NativeWindow"], resources: [.copy("Fonts")]),
+        .executableTarget(name: "DoorIntoSummer", resources: [.copy("Fonts")]),
         .testTarget(name: "DoorIntoSummerTests", dependencies: ["DoorIntoSummer"]),
     ]
 )

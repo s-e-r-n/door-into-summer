@@ -1,35 +1,20 @@
 import AppKit
-import SwiftUI
 
 struct Status: Equatable {
     let text: String
     let alert: Bool
 }
 
+private struct FeedSnapshot {
+    let status: Status?
+    let running: Bool
+    let shown: [String]
+    let changed: Set<String>
+    let summons: Summons?
+}
+
 private let topInset: CGFloat = 12
 private let prefetchDepth = 2
-
-struct FeedTable: NSViewRepresentable {
-    let chat: Chat
-    let cursor: CursorOwner
-    let revision: Int
-    let status: Status?
-    let summons: Summons?
-    let running: Bool
-    let bottomInset: CGFloat
-
-    func makeCoordinator() -> FeedController {
-        FeedController(chat: chat, cursor: cursor)
-    }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        context.coordinator.scrollView
-    }
-
-    func updateNSView(_ view: NSScrollView, context: Context) {
-        context.coordinator.apply(revision: revision, status: status, summons: summons, running: running, bottomInset: bottomInset)
-    }
-}
 
 @MainActor
 final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
@@ -41,12 +26,13 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
     private var status: Status?
     private var statusPlan: RowPlan?
     private var running = false
-    private var revision = -1
     private var summons: UUID?
     private var width: CGFloat = 0
     private var offset: CGFloat = 0
     private var paging = PageWindow()
     private var applying = false
+    private lazy var observer = Observer(read: { [unowned self] in snapshot() }, apply: { [unowned self] in apply($0) },
+                                         invalidate: { [unowned self] in scrollView.needsLayout = true })
 
     private var store: ThreadStore { chat.thread }
     private var clip: NSClipView { scrollView.contentView }
@@ -78,37 +64,52 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0)
         scrollView.resized = { [weak self] in self?.resized() }
+        scrollView.laidOut = { [weak self] in self?.observer.read() }
         clip.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: clip)
     }
 
-    func apply(revision: Int, status: Status?, summons: Summons?, running: Bool, bottomInset: CGFloat) {
+    func set(bottomInset: CGFloat) {
+        guard bottomInset != scrollView.contentInsets.bottom else { return }
+        keepingBottom { scrollView.contentInsets.bottom = bottomInset }
+    }
+
+    private func snapshot() -> FeedSnapshot {
+        FeedSnapshot(status: statusLine, running: chat.connection == .live, shown: Array(store.shownIDs), changed: store.takeChanges(), summons: chat.summons)
+    }
+
+    private var statusLine: Status? {
+        switch chat.connection {
+        case .reading:
+            Status(text: "Reading the live image sessions.", alert: false)
+        case .live where store.sessions.isEmpty:
+            Status(text: "No live image session.", alert: false)
+        case .live:
+            nil
+        }
+    }
+
+    private func apply(_ snapshot: FeedSnapshot) {
         keepingBottom {
-            if bottomInset != scrollView.contentInsets.bottom {
-                scrollView.contentInsets.bottom = bottomInset
-            }
-            if running != self.running {
-                self.running = running
+            if snapshot.running != running {
+                running = snapshot.running
                 for view in rowViews {
                     view.set(running: running)
                 }
             }
             var reload = false
-            if status != self.status {
-                self.status = status
+            if snapshot.status != status {
+                status = snapshot.status
                 statusPlan = nil
                 reload = true
             }
-            let changed = revision == self.revision ? [] : store.takeChanges()
-            self.revision = revision
-            let shown = Array(store.shownIDs)
-            if shown != rows {
-                rows = shown
+            if snapshot.shown != rows {
+                rows = snapshot.shown
                 reload = true
             }
-            reload ? reloadAll() : reloadRows(changed)
+            reload ? reloadAll() : reloadRows(snapshot.changed)
         }
-        if let summons, summons.id != self.summons {
+        if let summons = snapshot.summons, summons.id != self.summons {
             self.summons = summons.id
             scroll(toTop: summons.post)
         }
@@ -283,11 +284,18 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
 
 final class FeedScrollView: NSScrollView {
     var resized: () -> Void = {}
+    var laidOut: () -> Void = {}
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         tile()
         resized()
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        laidOut()
     }
 }
 

@@ -238,11 +238,10 @@ final class ThreadStore {
     private(set) var ids: [String] = []
     private(set) var earlierPages = 0
     private(set) var sessions: [LiveSession] = []
-    private(set) var revision = 0
     @ObservationIgnored private(set) var models: [String: RowModel] = [:]
     @ObservationIgnored private var windowWidth: CGFloat = 0
     @ObservationIgnored private var measuredRatios: [URL: Ratio] = [:]
-    @ObservationIgnored private var changed: Set<String> = []
+    private var changed: Set<String> = []
     @ObservationIgnored private(set) var cards: [Card] = []
     @ObservationIgnored private var live: [String] = []
     @ObservationIgnored private var records: [String: SessionRecord] = [:]
@@ -432,9 +431,6 @@ final class ThreadStore {
             prepare(model)
             changed.insert(id)
         }
-        if !ids.isEmpty {
-            revision += 1
-        }
     }
 
     private func prepare(_ model: RowModel) {
@@ -463,12 +459,10 @@ final class ThreadStore {
     private func reconcile() {
         let derived = messages(of: cards, pending: pending, validated: validatedIDs)
         var kept: [String: RowModel] = [:]
-        var touched = false
         for message in derived {
             let model = models[message.id]?.updated(from: message) ?? RowModel(message)
             if model.model.isUnplanned {
                 changed.insert(message.id)
-                touched = true
             }
             prepare(model)
             kept[message.id] = model
@@ -477,10 +471,6 @@ final class ThreadStore {
         let order = derived.map(\.id)
         if order != ids {
             ids = order
-            touched = true
-        }
-        if touched {
-            revision += 1
         }
         let live = cards.map { LiveSession(name: $0.session, subject: $0.subject) }
         if live != sessions {

@@ -83,8 +83,10 @@ private struct JobAnswer: Decodable {
     }
 
     func job(_ id: String) -> Job {
-        let size = params.width.flatMap { width in params.height.map { "\(width)x\($0)" } }
-        return Job(id: id, model: model, aspect: params.aspect, quality: params.quality, batch: params.batch, resolution: params.resolution,
+        let pixels = params.width.flatMap { width in params.height.map { (width: width, height: $0) } }
+        let size = pixels.map { "\($0.width)x\($0.height)" }
+        let aspect = params.aspect ?? pixels.flatMap { $0.width > 0 && $0.height > 0 ? Ratio(width: $0.width, height: $0.height).label : nil }
+        return Job(id: id, model: model, aspect: aspect, quality: params.quality, batch: params.batch, resolution: params.resolution,
                    size: size, mode: params.mode, prompt: params.prompt, createdAt: createdAt)
     }
 }
