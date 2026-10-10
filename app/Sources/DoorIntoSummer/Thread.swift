@@ -140,40 +140,70 @@ enum Message: Equatable, Hashable, Identifiable, Sendable {
     }
 }
 
-private struct Placed {
+struct Owner: Equatable, Hashable, Sendable {
+    let session: String
+    let attempt: Int
+}
+
+struct Entry: Equatable, Sendable {
     let at: Date
     let rank: Int
-    let message: Message
+    let id: String
+
+    var key: OrderKey { OrderKey(at: at, rank: rank) }
 }
 
-func messages(of cards: [Card], pending: [Pending], validated: Set<String>) -> [Message] {
-    let listed = cards.flatMap { card in placed(of: card, in: cards, validated: validated) }
-        .sorted { ($0.at, $0.rank) < ($1.at, $1.rank) }
-        .map(\.message)
-    let waiting = pending.sorted { $0.at < $1.at }.map { sent in
-        Message.reviewer(ReviewerMessage(id: "pending-\(sent.id)", session: sent.session, attempt: sent.attempt, text: sent.text,
-                                         mark: .sent, at: sent.at, reference: sent.reference.map { shown($0, in: cards) }))
+struct OrderKey: Comparable, Sendable {
+    let at: Date
+    let rank: Int
+
+    static func < (lhs: OrderKey, rhs: OrderKey) -> Bool {
+        (lhs.at, lhs.rank) < (rhs.at, rhs.rank)
     }
-    return listed + waiting
 }
 
-func shown(_ reference: Reference, in cards: [Card]) -> ShownReference {
-    let source = cards.lazy.flatMap { card in card.answers.map { (session: card.session, attempt: $0.attempt, job: $0.seen?.jobID) } }
-        .first { $0.job == reference.job }
-    return ShownReference(job: reference.job, url: reference.url, session: source?.session, attempt: source?.attempt)
+func owners(of card: Card) -> [String: Owner] {
+    var owners: [String: Owner] = [:]
+    for answered in card.answers {
+        if let job = answered.seen?.jobID {
+            owners[StoreFile.jobKey(job)] = Owner(session: card.session, attempt: answered.attempt)
+        }
+    }
+    return owners
 }
 
-private func placed(of card: Card, in cards: [Card], validated: Set<String>) -> [Placed] {
+func referencedJobs(of card: Card) -> Set<String> {
+    Set(card.feedbacks.compactMap { $0.reference.map { StoreFile.jobKey($0.job) } })
+}
+
+func shown(_ reference: Reference, owners: [String: Owner]) -> ShownReference {
+    let owner = owners[StoreFile.jobKey(reference.job)]
+    return ShownReference(job: reference.job, url: reference.url, session: owner?.session, attempt: owner?.attempt)
+}
+
+func waiting(_ pending: [Pending], owners: [String: Owner]) -> [Message] {
+    pending.sorted { $0.at < $1.at }.map { sent in
+        Message.reviewer(ReviewerMessage(id: "pending-\(sent.id)", session: sent.session, attempt: sent.attempt, text: sent.text,
+                                         mark: .sent, at: sent.at, reference: sent.reference.map { shown($0, owners: owners) }))
+    }
+}
+
+func placed(of card: Card, owners: [String: Owner], validated: Set<String>) -> [(entry: Entry, message: Message)] {
     let times = nondecreasing(card.conversation.map(\.at))
     var listed = card.conversation.indices.map { rank in
-        Placed(at: times[rank], rank: rank, message: message(of: card.conversation[rank], on: card, in: cards, validated: validated))
+        let message = message(of: card.conversation[rank], on: card, owners: owners, validated: validated)
+        return (Entry(at: times[rank], rank: rank, id: message.id), message)
     }
     if let working = card.working {
         let job = card.answers.last { $0.attempt == card.attempt }?.seen?.job
         let next = WorkingPost(id: "\(card.session)~", session: card.session, subject: card.subject, attempt: card.attempt + 1, ratio: working, job: job)
-        listed.append(Placed(at: card.at, rank: card.conversation.count, message: .working(next)))
+        listed.append((Entry(at: card.at, rank: card.conversation.count, id: next.id), .working(next)))
     }
     return listed
+}
+
+func postID(session: String, attempt: Int) -> String {
+    "\(session)@\(attempt)"
 }
 
 private func nondecreasing(_ times: [Date?]) -> [Date] {
@@ -184,14 +214,14 @@ private func nondecreasing(_ times: [Date?]) -> [Date] {
     }
 }
 
-private func message(of spoken: Spoken, on card: Card, in cards: [Card], validated: Set<String>) -> Message {
+private func message(of spoken: Spoken, on card: Card, owners: [String: Owner], validated: Set<String>) -> Message {
     switch spoken {
     case .reviewer(let said):
         return .reviewer(ReviewerMessage(id: "\(card.session)#\(said.number)", session: card.session, attempt: said.attempt, text: said.text,
                                          mark: said.state == .read ? .read : .delivered, at: said.sentAt,
-                                         reference: said.reference.map { shown($0, in: cards) }))
+                                         reference: said.reference.map { shown($0, owners: owners) }))
     case .session(let answered):
-        let id = "\(card.session)@\(answered.attempt)"
+        let id = postID(session: card.session, attempt: answered.attempt)
         let seen = answered.seen
         return .post(Post(id: id, session: card.session, subject: card.subject, attempt: answered.attempt, at: seen?.at, original: seen?.original,
                           generation: seen?.generation, jobID: seen?.jobID, job: seen?.job, validated: seen?.validated == true || validated.contains(id)))

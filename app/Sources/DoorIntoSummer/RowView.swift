@@ -23,11 +23,10 @@ final class RowView: NSView {
     private let separator = stillLayer()
     private let insetBar = stillLayer()
     private var lineLayers: [CALayer] = []
-    private var boxLayers: [CALayer] = []
+    private var boxLayers: [Int: CALayer] = [:]
     private var loaders: [Int: CALayer] = [:]
     private var notices: [Int: CALayer] = [:]
-    private var loads: [Task<Void, Never>] = []
-    private var shown = 0
+    private var loads: [Int: Task<Void, Never>] = [:]
 
     init(images: ImageStore, cursor: CursorOwner) {
         self.images = images
@@ -58,12 +57,12 @@ final class RowView: NSView {
         self.act = act
         self.measured = measured
         guard plan != self.plan else { return set(running: running) }
-        clear()
+        let previous = self.plan
         self.plan = plan
         self.running = running
         insetBar.isHidden = !plan.inset
         placeLines(plan.lines, height: plan.height)
-        placeBoxes(plan.boxes)
+        placeBoxes(plan.boxes, keeping: previous?.boxes ?? [])
         placeControls(plan.controls)
         setAccessibilityLabel(plan.text)
         needsDisplay = true
@@ -75,11 +74,6 @@ final class RowView: NSView {
         for (index, loader) in loaders where plan.boxes[index].content == .waiting {
             running ? HexSprite.shared.start(on: loader) : HexSprite.shared.stop(on: loader)
         }
-    }
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        clear()
     }
 
     override func setFrameOrigin(_ newOrigin: NSPoint) {
@@ -99,34 +93,6 @@ final class RowView: NSView {
         registerControls()
     }
 
-    private func clear() {
-        shown += 1
-        for load in loads {
-            load.cancel()
-        }
-        loads = []
-        for loader in loaders.values {
-            HexSprite.shared.stop(on: loader)
-        }
-        loaders = [:]
-        notices = [:]
-        for layer in boxLayers {
-            layer.removeFromSuperlayer()
-        }
-        boxLayers = []
-        for layer in lineLayers {
-            layer.isHidden = true
-            layer.contents = nil
-        }
-        insetBar.isHidden = true
-        plan = nil
-        needsDisplay = true
-        for button in buttons {
-            button.isHidden = true
-        }
-        unregisterControls()
-    }
-
     private func placeLines(_ lines: [PlacedLine], height: CGFloat) {
         while lineLayers.count < lines.count {
             let layer = stillLayer()
@@ -136,38 +102,60 @@ final class RowView: NSView {
         for (index, layer) in lineLayers.enumerated() where index < lines.count {
             place(lines[index].line, x: lines[index].x, bottom: height - lines[index].top - Mono.lineHeight, on: layer)
         }
+        for layer in lineLayers.dropFirst(lines.count) {
+            layer.isHidden = true
+            layer.contents = nil
+        }
     }
 
     private func place(_ line: Line, x: CGFloat, bottom: CGFloat, on layer: CALayer) {
-        guard let raster = TextRasters.shared.raster(of: line, x: x, bottom: bottom, scale: scale) else { return }
+        guard let raster = TextRasters.shared.raster(of: line, x: x, bottom: bottom, scale: scale) else { return layer.isHidden = true }
         layer.frame = raster.frame
         layer.contents = raster.image
         layer.contentsScale = scale
         layer.isHidden = false
     }
 
-    private func placeBoxes(_ boxes: [Box]) {
+    private func placeBoxes(_ boxes: [Box], keeping previous: [Box]) {
+        for index in Array(boxLayers.keys) where index >= boxes.count || previous[index] != boxes[index] {
+            dropBox(at: index)
+        }
         for (index, box) in boxes.enumerated() {
-            let layer = stillLayer()
-            layer.frame = flipped(box.frame)
-            layer.masksToBounds = true
-            layer.contentsScale = scale
-            layer.zPosition = boxLevel
-            boxLayers.append(layer)
-            self.layer?.addSublayer(layer)
-            switch box.content {
-            case .picture(let url, let ratio):
-                layer.contentsGravity = .resizeAspect
-                layer.minificationFilter = .trilinear
-                show(url, ratio: ratio, loader: true, in: index)
-            case .thumbnail(let url):
-                layer.backgroundColor = Self.highlight.cgColor
-                layer.contentsGravity = .resizeAspectFill
-                layer.minificationFilter = .trilinear
-                show(url, ratio: nil, loader: false, in: index)
-            case .waiting:
-                addLoader(to: index, running: running)
+            if let kept = boxLayers[index] {
+                kept.frame = flipped(box.frame)
+            } else {
+                addBox(box, at: index)
             }
+        }
+    }
+
+    private func dropBox(at index: Int) {
+        loads.removeValue(forKey: index)?.cancel()
+        removeLoader(from: index)
+        notices[index] = nil
+        boxLayers.removeValue(forKey: index)?.removeFromSuperlayer()
+    }
+
+    private func addBox(_ box: Box, at index: Int) {
+        let layer = stillLayer()
+        layer.frame = flipped(box.frame)
+        layer.masksToBounds = true
+        layer.contentsScale = scale
+        layer.zPosition = boxLevel
+        boxLayers[index] = layer
+        self.layer?.addSublayer(layer)
+        switch box.content {
+        case .picture(let url, let ratio):
+            layer.contentsGravity = .resizeAspect
+            layer.minificationFilter = .trilinear
+            show(url, ratio: ratio, loader: true, in: index)
+        case .thumbnail(let url):
+            layer.backgroundColor = Self.highlight.cgColor
+            layer.contentsGravity = .resizeAspectFill
+            layer.minificationFilter = .trilinear
+            show(url, ratio: nil, loader: false, in: index)
+        case .waiting:
+            addLoader(to: index, running: running)
         }
     }
 
@@ -178,21 +166,21 @@ final class RowView: NSView {
         if loader {
             addLoader(to: index, running: true)
         }
-        let shown = shown
         let images = images
-        loads.append(Task { [weak self] in
+        loads[index] = Task { [weak self] in
             let decoded = await images.image(for: url, ratio: ratio)
-            guard let self, self.shown == shown else { return }
+            guard let self, !Task.isCancelled else { return }
+            loads[index] = nil
             if let decoded {
                 place(decoded, in: index, url: url, ratioKnown: ratio != nil)
             } else {
                 fail(index)
             }
-        })
+        }
     }
 
     private func place(_ decoded: Decoded, in index: Int, url: URL, ratioKnown: Bool) {
-        boxLayers[index].contents = decoded.image
+        boxLayers[index]?.contents = decoded.image
         removeLoader(from: index)
         if !ratioKnown {
             measured(url, decoded.ratio)
@@ -201,7 +189,7 @@ final class RowView: NSView {
 
     private func fail(_ index: Int) {
         removeLoader(from: index)
-        let box = boxLayers[index]
+        guard let box = boxLayers[index] else { return }
         let notice = stillLayer()
         place(line(of: [Span("image unavailable", .faint)]), x: unavailableInset, bottom: box.bounds.height - unavailableInset - Mono.lineHeight, on: notice)
         box.addSublayer(notice)
@@ -209,8 +197,8 @@ final class RowView: NSView {
     }
 
     private func addLoader(to index: Int, running: Bool) {
+        guard let box = boxLayers[index] else { return }
         let loader = HexSprite.shared.layer()
-        let box = boxLayers[index]
         let side = HexSprite.shared.side
         loader.frame = CGRect(x: ((box.bounds.width - side) / 2).rounded(), y: ((box.bounds.height - side) / 2).rounded(), width: side, height: side)
         loader.contentsScale = scale
@@ -236,6 +224,9 @@ final class RowView: NSView {
             button.tag = index
             button.isHidden = false
             button.setAccessibilityLabel(controls[index].title)
+        }
+        for button in buttons.dropFirst(controls.count) {
+            button.isHidden = true
         }
         registerControls()
     }

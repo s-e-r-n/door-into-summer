@@ -97,17 +97,14 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
                     view.set(running: running)
                 }
             }
-            var reload = false
+            let statusBefore = status
+            let rowsBefore = rows
             if snapshot.status != status {
                 status = snapshot.status
                 statusPlan = nil
-                reload = true
             }
-            if snapshot.shown != rows {
-                rows = snapshot.shown
-                reload = true
-            }
-            reload ? reloadAll() : reloadRows(snapshot.changed)
+            rows = snapshot.shown
+            update(from: rowsBefore, statusBefore: statusBefore, changed: snapshot.changed)
         }
         if let summons = snapshot.summons, summons.id != self.summons {
             self.summons = summons.id
@@ -217,17 +214,19 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
         store.showEarlierPage()
         let shown = Array(store.shownIDs)
         let added = shown.prefix { $0 != rows.first }.reduce(0) { $0 + (store.plan(of: $1, at: width)?.height ?? 0) }
+        let rowsBefore = rows
         rows = shown
         applying = true
-        reloadAll()
+        update(from: rowsBefore, statusBefore: status, changed: [])
         scroll(to: clip.bounds.minY + added)
         applying = false
     }
 
     private func showLastPage() {
         store.showLastPage()
+        let rowsBefore = rows
         rows = Array(store.shownIDs)
-        keepingBottom { reloadAll() }
+        keepingBottom { update(from: rowsBefore, statusBefore: status, changed: []) }
     }
 
     private func reloadAll() {
@@ -235,14 +234,33 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
         table.reloadData()
     }
 
-    private func reloadRows(_ changed: Set<String>) {
-        guard width > 0, !changed.isEmpty else { return }
-        let indexes = IndexSet(rows.indices.filter { changed.contains(rows[$0]) })
+    private func update(from rowsBefore: [String], statusBefore: Status?, changed: Set<String>) {
+        guard width > 0 else { return }
+        let difference = rows.difference(from: rowsBefore)
+        var removed = IndexSet(difference.removals.map(position))
+        var inserted = IndexSet(difference.insertions.map(position))
+        if statusBefore != nil, status == nil {
+            removed.insert(rowsBefore.count)
+        }
+        if statusBefore == nil, status != nil {
+            inserted.insert(rows.count)
+        }
+        if !removed.isEmpty || !inserted.isEmpty {
+            table.beginUpdates()
+            table.removeRows(at: removed, withAnimation: [])
+            table.insertRows(at: inserted, withAnimation: [])
+            table.endUpdates()
+        }
+        var reloaded = IndexSet(rows.indices.filter { changed.contains(rows[$0]) && !inserted.contains($0) })
+        if statusBefore != nil, status != nil, statusBefore != status {
+            reloaded.insert(rows.count)
+        }
+        guard !reloaded.isEmpty else { return }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
-            table.noteHeightOfRows(withIndexesChanged: indexes)
+            table.noteHeightOfRows(withIndexesChanged: reloaded)
         }
-        table.reloadData(forRowIndexes: indexes, columnIndexes: [0])
+        table.reloadData(forRowIndexes: reloaded, columnIndexes: [0])
     }
 
     private func keepingBottom(_ body: () -> Void) {
@@ -279,6 +297,12 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
 
     private var rowViews: [RowView] {
         (0 ..< table.numberOfRows).compactMap { table.view(atColumn: 0, row: $0, makeIfNecessary: false) as? RowView }
+    }
+}
+
+private func position(of change: CollectionDifference<String>.Change) -> Int {
+    switch change {
+    case .insert(let offset, _, _), .remove(let offset, _, _): offset
     }
 }
 
