@@ -14,12 +14,11 @@ final class RowView: NSView {
     private static let insetBar = NSColor(Color.secondaryText)
 
     private let images: ImageStore
-    private let cursor: CursorOwner
     private var plan: RowPlan?
     private var running = false
     private var act: (RowAction) -> Void = { _ in }
     private var measured: (URL, Ratio) -> Void = { _, _ in }
-    private var buttons: [NSButton] = []
+    private var buttons: [HandButton] = []
     private let separator = stillLayer()
     private let insetBar = stillLayer()
     private var lineLayers: [CALayer] = []
@@ -28,9 +27,8 @@ final class RowView: NSView {
     private var notices: [Int: CALayer] = [:]
     private var loads: [Int: Task<Void, Never>] = [:]
 
-    init(images: ImageStore, cursor: CursorOwner) {
+    init(images: ImageStore) {
         self.images = images
-        self.cursor = cursor
         super.init(frame: .zero)
         identifier = Self.identifier
         wantsLayer = true
@@ -76,21 +74,10 @@ final class RowView: NSView {
         }
     }
 
-    override func setFrameOrigin(_ newOrigin: NSPoint) {
-        super.setFrameOrigin(newOrigin)
-        registerControls()
-    }
-
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         separator.frame = CGRect(x: 0, y: newSize.height - separatorThickness, width: newSize.width, height: separatorThickness)
         insetBar.frame = CGRect(x: 0, y: 0, width: insetBarWidth, height: newSize.height)
-        registerControls()
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        registerControls()
     }
 
     private func placeLines(_ lines: [PlacedLine], height: CGFloat) {
@@ -228,15 +215,10 @@ final class RowView: NSView {
         for button in buttons.dropFirst(controls.count) {
             button.isHidden = true
         }
-        registerControls()
     }
 
-    private func madeButton() -> NSButton {
-        let button = NSButton(frame: .zero)
-        button.isBordered = false
-        button.isTransparent = true
-        button.title = ""
-        button.refusesFirstResponder = true
+    private func madeButton() -> HandButton {
+        let button = HandButton()
         button.target = self
         button.action = #selector(clicked(_:))
         addSubview(button)
@@ -246,23 +228,6 @@ final class RowView: NSView {
     @objc private func clicked(_ button: NSButton) {
         guard let plan, plan.controls.indices.contains(button.tag) else { return }
         act(plan.controls[button.tag].action)
-    }
-
-    private func registerControls() {
-        guard let plan, window != nil, let space = enclosingScrollView?.documentView else { return unregisterControls() }
-        for index in plan.controls.indices {
-            let button = buttons[index]
-            cursor.register(ClickableFrame(frame: convert(button.frame, to: space), space: space, cursor: .pointingHand), for: button)
-        }
-        for button in buttons.dropFirst(plan.controls.count) {
-            cursor.unregister(button)
-        }
-    }
-
-    private func unregisterControls() {
-        for button in buttons {
-            cursor.unregister(button)
-        }
     }
 
     private func flipped(_ rect: CGRect) -> CGRect {
@@ -279,6 +244,26 @@ private func stillLayer() -> CALayer {
     let layer = CALayer()
     layer.actions = ["contents": NSNull(), "position": NSNull(), "bounds": NSNull(), "sublayers": NSNull(), "backgroundColor": NSNull(), "hidden": NSNull()]
     return layer
+}
+
+final class HandButton: NSButton {
+    init() {
+        super.init(frame: .zero)
+        isBordered = false
+        isTransparent = true
+        title = ""
+        refusesFirstResponder = true
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.cursorUpdate, .activeInActiveApp, .inVisibleRect], owner: self))
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        let hit = window?.contentView?.hitTest(event.locationInWindow)
+        (hit === self ? NSCursor.pointingHand : NSCursor.arrow).set()
+    }
 }
 
 final class FeedRowView: NSTableRowView {

@@ -14,21 +14,18 @@ private struct FeedSnapshot {
 }
 
 private let topInset: CGFloat = 12
-private let prefetchDepth = 2
 
 @MainActor
 final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     let scrollView = FeedScrollView()
     private let table = FeedTableView()
     private let chat: Chat
-    private let cursor: CursorOwner
     private var rows: [String] = []
     private var status: Status?
     private var statusPlan: RowPlan?
     private var running = false
     private var summons: UUID?
     private var width: CGFloat = 0
-    private var offset: CGFloat = 0
     private var paging = PageWindow()
     private var applying = false
     private lazy var observer = Observer(read: { [unowned self] in snapshot() }, apply: { [unowned self] in apply($0) },
@@ -37,9 +34,8 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
     private var store: ThreadStore { chat.thread }
     private var clip: NSClipView { scrollView.contentView }
 
-    init(chat: Chat, cursor: CursorOwner) {
+    init(chat: Chat) {
         self.chat = chat
-        self.cursor = cursor
         super.init()
         let column = NSTableColumn(identifier: RowView.identifier)
         column.resizingMask = .autoresizingMask
@@ -122,7 +118,7 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let plan = plan(row) else { return nil }
-        let view = tableView.makeView(withIdentifier: RowView.identifier, owner: nil) as? RowView ?? RowView(images: chat.images, cursor: cursor)
+        let view = tableView.makeView(withIdentifier: RowView.identifier, owner: nil) as? RowView ?? RowView(images: chat.images)
         view.render(plan, running: running, act: { [weak self] in self?.act($0) }, measured: { [weak self] in self?.store.measured($0, ratio: $1) })
         return view
     }
@@ -178,35 +174,14 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
     }
 
     @objc private func scrolled(_ notification: Notification) {
-        let visible = clip.bounds
-        let direction = visible.minY >= offset ? 1 : -1
-        offset = visible.minY
         guard !applying else { return }
-        cursor.refresh()
-        prefetch(from: visible, direction: direction)
-        switch paging.scrolled(visible: visible, extent: extent, hasEarlierPage: store.hasEarlierPage, showsEarlierPages: store.earlierPages > 0) {
+        switch paging.scrolled(visible: clip.bounds, extent: extent, hasEarlierPage: store.hasEarlierPage, showsEarlierPages: store.earlierPages > 0) {
         case .showEarlierPage:
             showEarlierPage()
         case .showLastPage:
             showLastPage()
         case nil:
             break
-        }
-    }
-
-    private func prefetch(from visible: CGRect, direction: Int) {
-        let shown = table.rows(in: visible)
-        guard shown.location != NSNotFound else { return }
-        let count = table.numberOfRows
-        let first = min(shown.location, count)
-        let end = min(shown.location + shown.length, count)
-        let ahead = direction > 0 ? end ..< min(end + prefetchDepth, count) : max(first - prefetchDepth, 0) ..< first
-        for row in ahead {
-            for box in plan(row)?.boxes ?? [] {
-                if case .picture(let url, let ratio) = box.content {
-                    chat.images.prefetch(url, ratio: ratio)
-                }
-            }
         }
     }
 

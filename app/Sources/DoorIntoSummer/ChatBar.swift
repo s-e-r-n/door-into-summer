@@ -78,7 +78,7 @@ struct ChatBar: View {
                 .textFieldStyle(.plain)
                 .foregroundStyle(Color.foreground)
                 .focused($focused)
-                .cursor(.iBeam)
+                .pointerStyle(.horizontalText)
         }
         .padding(.horizontal, Layout.barInset)
         .frame(maxWidth: Layout.barWidth)

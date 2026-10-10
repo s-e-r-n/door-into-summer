@@ -3,14 +3,13 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let chat = Chat()
-    private let cursor = CursorOwner()
     private var window: NSWindow?
     private var guide: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         installMainMenu(details: #selector(toggleDetails(_:)), guide: #selector(showGuide(_:)), target: self)
-        let window = mainWindow(content: ShellView(chat: chat, cursor: cursor))
+        let window = mainWindow(content: ShellView(chat: chat))
         window.makeKeyAndOrderFront(nil)
         self.window = window
         Task { await chat.start() }
