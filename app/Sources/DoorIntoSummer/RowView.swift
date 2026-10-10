@@ -1,8 +1,10 @@
 import AppKit
-import CoreText
 import SwiftUI
 
 private let unavailableInset: CGFloat = 12
+private let separatorThickness: CGFloat = 1
+private let insetBarWidth: CGFloat = 2
+private let boxLevel: CGFloat = 1
 
 @MainActor
 final class RowView: NSView {
@@ -10,7 +12,6 @@ final class RowView: NSView {
     private static let highlight = NSColor(Color.reviewerRow)
     private static let separator = NSColor(Color.separator)
     private static let insetBar = NSColor(Color.secondaryText)
-    private static let stillActions: [String: CAAction] = ["contents": NSNull(), "position": NSNull(), "bounds": NSNull(), "sublayers": NSNull(), "backgroundColor": NSNull()]
 
     private let images: ImageStore
     private let cursor: CursorOwner
@@ -19,9 +20,12 @@ final class RowView: NSView {
     private var act: (RowAction) -> Void = { _ in }
     private var measured: (URL, Ratio) -> Void = { _, _ in }
     private var buttons: [NSButton] = []
+    private let separator = stillLayer()
+    private let insetBar = stillLayer()
+    private var lineLayers: [CALayer] = []
     private var boxLayers: [CALayer] = []
     private var loaders: [Int: CALayer] = [:]
-    private var unavailable: Set<Int> = []
+    private var notices: [Int: CALayer] = [:]
     private var loads: [Task<Void, Never>] = []
     private var shown = 0
 
@@ -31,13 +35,23 @@ final class RowView: NSView {
         super.init(frame: .zero)
         identifier = Self.identifier
         wantsLayer = true
-        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        separator.backgroundColor = Self.separator.cgColor
+        insetBar.backgroundColor = Self.insetBar.cgColor
+        insetBar.isHidden = true
+        layer?.addSublayer(separator)
+        layer?.addSublayer(insetBar)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
     }
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = plan?.highlighted == true ? Self.highlight.cgColor : nil
     }
 
     func render(_ plan: RowPlan, running: Bool, act: @escaping (RowAction) -> Void, measured: @escaping (URL, Ratio) -> Void) {
@@ -47,6 +61,8 @@ final class RowView: NSView {
         clear()
         self.plan = plan
         self.running = running
+        insetBar.isHidden = !plan.inset
+        placeLines(plan.lines, height: plan.height)
         placeBoxes(plan.boxes)
         placeControls(plan.controls)
         setAccessibilityLabel(plan.text)
@@ -73,46 +89,14 @@ final class RowView: NSView {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
+        separator.frame = CGRect(x: 0, y: newSize.height - separatorThickness, width: newSize.width, height: separatorThickness)
+        insetBar.frame = CGRect(x: 0, y: 0, width: insetBarWidth, height: newSize.height)
         registerControls()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         registerControls()
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let plan, let context = NSGraphicsContext.current?.cgContext else { return }
-        if plan.highlighted {
-            Self.highlight.setFill()
-            bounds.fill()
-        }
-        Self.separator.setFill()
-        CGRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
-        if plan.inset {
-            Self.insetBar.setFill()
-            CGRect(x: 0, y: 0, width: 2, height: bounds.height).fill()
-        }
-        for placed in plan.lines {
-            draw(placed.line, x: placed.x, top: placed.top, in: context)
-        }
-        for index in unavailable {
-            let box = plan.boxes[index].frame
-            draw(line(of: [Span("image unavailable", .faint)]), x: box.minX + unavailableInset, top: box.minY + unavailableInset, in: context)
-        }
-    }
-
-    private func draw(_ line: Line, x: CGFloat, top: CGFloat, in context: CGContext) {
-        guard let plan else { return }
-        let text = NSMutableAttributedString()
-        for span in line.spans {
-            text.append(NSAttributedString(string: span.text, attributes: [
-                .font: span.style.font,
-                NSAttributedString.Key(kCTForegroundColorAttributeName as String): span.style.color.cgColor,
-            ]))
-        }
-        context.textPosition = CGPoint(x: x, y: plan.height - top - Mono.ascender)
-        CTLineDraw(CTLineCreateWithAttributedString(text), context)
     }
 
     private func clear() {
@@ -125,55 +109,82 @@ final class RowView: NSView {
             HexSprite.shared.stop(on: loader)
         }
         loaders = [:]
+        notices = [:]
         for layer in boxLayers {
             layer.removeFromSuperlayer()
         }
         boxLayers = []
-        unavailable = []
+        for layer in lineLayers {
+            layer.isHidden = true
+            layer.contents = nil
+        }
+        insetBar.isHidden = true
         plan = nil
+        needsDisplay = true
         for button in buttons {
             button.isHidden = true
         }
         unregisterControls()
     }
 
+    private func placeLines(_ lines: [PlacedLine], height: CGFloat) {
+        while lineLayers.count < lines.count {
+            let layer = stillLayer()
+            lineLayers.append(layer)
+            self.layer?.addSublayer(layer)
+        }
+        for (index, layer) in lineLayers.enumerated() where index < lines.count {
+            place(lines[index].line, x: lines[index].x, bottom: height - lines[index].top - Mono.lineHeight, on: layer)
+        }
+    }
+
+    private func place(_ line: Line, x: CGFloat, bottom: CGFloat, on layer: CALayer) {
+        guard let raster = TextRasters.shared.raster(of: line, x: x, bottom: bottom, scale: scale) else { return }
+        layer.frame = raster.frame
+        layer.contents = raster.image
+        layer.contentsScale = scale
+        layer.isHidden = false
+    }
+
     private func placeBoxes(_ boxes: [Box]) {
         for (index, box) in boxes.enumerated() {
-            let layer = CALayer()
-            layer.actions = Self.stillActions
+            let layer = stillLayer()
             layer.frame = flipped(box.frame)
             layer.masksToBounds = true
             layer.contentsScale = scale
+            layer.zPosition = boxLevel
             boxLayers.append(layer)
             self.layer?.addSublayer(layer)
             switch box.content {
-            case .picture(let url, let ratioKnown):
+            case .picture(let url, let ratio):
                 layer.contentsGravity = .resizeAspect
-                show(url, side: box.pixelSide(at: scale), thumbnail: false, in: index, ratioKnown: ratioKnown)
+                layer.minificationFilter = .trilinear
+                show(url, ratio: ratio, loader: true, in: index)
             case .thumbnail(let url):
                 layer.backgroundColor = Self.highlight.cgColor
                 layer.contentsGravity = .resizeAspectFill
-                show(url, side: box.pixelSide(at: scale), thumbnail: true, in: index, ratioKnown: true)
+                layer.minificationFilter = .trilinear
+                show(url, ratio: nil, loader: false, in: index)
             case .waiting:
                 addLoader(to: index, running: running)
             }
         }
     }
 
-    private func show(_ url: URL, side: Int, thumbnail: Bool, in index: Int, ratioKnown: Bool) {
-        if let decoded = thumbnail ? images.heldThumbnail(url, within: side) : images.held(url, within: side) {
-            return place(decoded, in: index, url: url, ratioKnown: ratioKnown)
+    private func show(_ url: URL, ratio: Ratio?, loader: Bool, in index: Int) {
+        if let decoded = images.held(url) {
+            return place(decoded, in: index, url: url, ratioKnown: ratio != nil)
         }
-        if !thumbnail {
+        if loader {
             addLoader(to: index, running: true)
         }
         let shown = shown
         let images = images
         loads.append(Task { [weak self] in
-            let decoded = thumbnail ? await images.thumbnail(for: url, within: side) : await images.image(for: url, within: side)
+            let decoded = await images.image(for: url, ratio: ratio)
             guard let self, self.shown == shown else { return }
             if let decoded {
-                place(decoded, in: index, url: url, ratioKnown: ratioKnown)
+                place(decoded, in: index, url: url, ratioKnown: ratio != nil)
             } else {
                 fail(index)
             }
@@ -190,8 +201,11 @@ final class RowView: NSView {
 
     private func fail(_ index: Int) {
         removeLoader(from: index)
-        unavailable.insert(index)
-        needsDisplay = true
+        let box = boxLayers[index]
+        let notice = stillLayer()
+        place(line(of: [Span("image unavailable", .faint)]), x: unavailableInset, bottom: box.bounds.height - unavailableInset - Mono.lineHeight, on: notice)
+        box.addSublayer(notice)
+        notices[index] = notice
     }
 
     private func addLoader(to index: Int, running: Bool) {
@@ -267,4 +281,28 @@ final class RowView: NSView {
     private var scale: CGFloat {
         window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     }
+}
+
+@MainActor
+private func stillLayer() -> CALayer {
+    let layer = CALayer()
+    layer.actions = ["contents": NSNull(), "position": NSNull(), "bounds": NSNull(), "sublayers": NSNull(), "backgroundColor": NSNull(), "hidden": NSNull()]
+    return layer
+}
+
+final class FeedRowView: NSTableRowView {
+    static let identifier = NSUserInterfaceItemIdentifier("feed-row")
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        identifier = Self.identifier
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {}
 }

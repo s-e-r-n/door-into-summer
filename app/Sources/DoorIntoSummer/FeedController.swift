@@ -130,6 +130,10 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
         return view
     }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        tableView.makeView(withIdentifier: FeedRowView.identifier, owner: nil) as? FeedRowView ?? FeedRowView(frame: .zero)
+    }
+
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
         false
     }
@@ -202,8 +206,8 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
         let ahead = direction > 0 ? end ..< min(end + prefetchDepth, count) : max(first - prefetchDepth, 0) ..< first
         for row in ahead {
             for box in plan(row)?.boxes ?? [] {
-                if case .picture(let url, _) = box.content {
-                    chat.images.prefetch(url, within: box.pixelSide(at: scale))
+                if case .picture(let url, let ratio) = box.content {
+                    chat.images.prefetch(url, ratio: ratio)
                 }
             }
         }
@@ -276,10 +280,6 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
     private var rowViews: [RowView] {
         (0 ..< table.numberOfRows).compactMap { table.view(atColumn: 0, row: $0, makeIfNecessary: false) as? RowView }
     }
-
-    private var scale: CGFloat {
-        scrollView.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-    }
 }
 
 final class FeedScrollView: NSScrollView {
@@ -301,8 +301,4 @@ final class FeedScrollView: NSScrollView {
 
 final class FeedTableView: NSTableView {
     override var acceptsFirstResponder: Bool { false }
-
-    override func prepareContent(in rect: NSRect) {
-        super.prepareContent(in: visibleRect)
-    }
 }
