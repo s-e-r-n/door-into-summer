@@ -6,6 +6,7 @@ struct SuggestionMenu: View {
     let chosen: Int
     let hovered: (Int) -> Void
     let picked: (Int) -> Void
+    @Environment(\.cursorOwner) private var cursor
 
     var body: some View {
         ScrollViewReader { reader in
@@ -20,7 +21,7 @@ struct SuggestionMenu: View {
                             .contentShape(Rectangle())
                             .onHover { inside in if inside { hovered(index) } }
                             .onTapGesture { picked(index) }
-                            .pointerStyle(.link)
+                            .cursor(.pointingHand)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -28,6 +29,7 @@ struct SuggestionMenu: View {
                 .padding(.horizontal, Layout.horizontalPadding)
             }
             .scrollIndicators(.hidden)
+            .onScrollGeometryChange(for: CGPoint.self) { $0.contentOffset } action: { _, _ in cursor?.refresh() }
             .frame(height: Layout.menuHeight)
             .background(Color.desk)
             .onChange(of: chosen, initial: true) {

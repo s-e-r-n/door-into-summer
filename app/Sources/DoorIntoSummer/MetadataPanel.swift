@@ -1,34 +1,9 @@
 import SwiftUI
 
-private struct Field: Identifiable {
-    let key: String
-    let value: String
-
-    var id: String { key }
-}
-
-@MainActor
-private func fields(of post: PostModel) -> [Field] {
-    let job = post.job
-    let shown = { (value: String?) in value ?? "unavailable" }
-    return [
-        Field(key: "Model", value: shown(job?.model)),
-        Field(key: "Aspect ratio", value: shown(job?.aspect)),
-        Field(key: "Size", value: shown(job?.size)),
-        Field(key: "Resolution", value: shown(job?.resolution)),
-        Field(key: "Quality", value: shown(job?.quality)),
-        Field(key: "Mode", value: shown(job?.mode)),
-        Field(key: "Batch", value: shown(job?.batch.map(String.init))),
-        Field(key: "Input", value: post.generation == nil ? "unavailable" : post.original == nil ? "none" : "original photo"),
-        Field(key: "Job", value: shown(job?.id)),
-        Field(key: "Created", value: shown(job?.createdAt)),
-        Field(key: "Prompt", value: shown(job?.prompt)),
-    ]
-}
-
 struct MetadataPanel: View {
     let post: PostModel
     @Environment(Chat.self) private var chat
+    @Environment(\.cursorOwner) private var cursor
 
     var body: some View {
         ScrollView {
@@ -52,6 +27,7 @@ struct MetadataPanel: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollIndicators(.hidden)
+        .onScrollGeometryChange(for: CGPoint.self) { $0.contentOffset } action: { _, _ in cursor?.refresh() }
         .foregroundStyle(Color.foreground)
         .shadow(color: .white.opacity(0.4), radius: 2)
         .shadow(color: .white.opacity(0.18), radius: 10)

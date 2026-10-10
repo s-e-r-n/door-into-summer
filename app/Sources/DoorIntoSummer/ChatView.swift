@@ -4,11 +4,12 @@ struct ChatView: View {
     let chat: Chat
     @State private var position = ScrollPosition()
     @State private var window = PageWindow()
+    @State private var cursor = CursorOwner()
 
     private var open: Bool { chat.inspected != nil }
 
     var body: some View {
-        PanelSlide(open: open) {
+        PanelSlide(open: open, cursor: cursor) {
             hostingRoot(feed.safeAreaInset(edge: .bottom, spacing: 0) { ChatBar(chat: chat) })
         } panel: {
             hostingRoot(panel)
@@ -33,6 +34,7 @@ struct ChatView: View {
             .background(Color.desk)
             .environment(chat)
             .environment(\.images, chat.images)
+            .environment(\.cursorOwner, cursor)
     }
 
     private var feed: some View {
@@ -51,6 +53,7 @@ struct ChatView: View {
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { before, now in
             paged(from: before, to: now)
+            cursor.refresh()
         }
         .onChange(of: chat.summons) { _, summons in
             if let summons {

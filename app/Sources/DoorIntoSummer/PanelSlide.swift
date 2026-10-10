@@ -7,11 +7,12 @@ private let slideKey = "slide"
 
 struct PanelSlide<Feed: View, Panel: View>: NSViewRepresentable {
     let open: Bool
+    let cursor: CursorOwner
     @ViewBuilder let feed: () -> Feed
     @ViewBuilder let panel: () -> Panel
 
     func makeNSView(context: Context) -> PanelSlideView<Feed, Panel> {
-        PanelSlideView(feed: feed(), panel: panel())
+        PanelSlideView(feed: feed(), panel: panel(), cursor: cursor)
     }
 
     func updateNSView(_ view: PanelSlideView<Feed, Panel>, context: Context) {
@@ -23,15 +24,18 @@ struct PanelSlide<Feed: View, Panel: View>: NSViewRepresentable {
 final class PanelSlideView<Feed: View, Panel: View>: NSView {
     private let feed: NSHostingView<Feed>
     private let panel: NSHostingView<Panel>
+    private let cursor: CursorOwner
     private var open = false
 
-    init(feed: Feed, panel: Panel) {
+    init(feed: Feed, panel: Panel, cursor: CursorOwner) {
         self.feed = Self.hosting(feed)
         self.panel = Self.hosting(panel)
+        self.cursor = cursor
         super.init(frame: .zero)
         wantsLayer = true
         addSubview(self.feed)
         addSubview(self.panel)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .inVisibleRect, .activeInActiveApp], owner: self))
     }
 
     required init?(coder: NSCoder) {
@@ -54,6 +58,13 @@ final class PanelSlideView<Feed: View, Panel: View>: NSView {
         }
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window {
+            cursor.claim(window)
+        }
+    }
+
     override func layout() {
         super.layout()
         feed.frame = feedFrame
@@ -63,6 +74,18 @@ final class PanelSlideView<Feed: View, Panel: View>: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         needsLayout = true
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        cursor.entered(at: event.locationInWindow)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        cursor.moved(to: event.locationInWindow)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        cursor.left()
     }
 
     private var feedFrame: CGRect {
@@ -90,3 +113,4 @@ private func slide(from: CGPoint, to: CGPoint) -> CABasicAnimation {
     animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 0.1, 0.25, 1)
     return animation
 }
+
