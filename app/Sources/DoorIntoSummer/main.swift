@@ -1,3 +1,4 @@
+import AppKit
 import CoreText
 import Foundation
 
@@ -8,4 +9,8 @@ func registeredFonts() {
 
 registeredFonts()
 _ = HexSprite.shared
-DoorIntoSummerApp.main()
+let app = NSApplication.shared
+let delegate = AppDelegate()
+app.delegate = delegate
+app.setActivationPolicy(.regular)
+app.run()

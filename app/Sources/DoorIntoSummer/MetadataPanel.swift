@@ -1,5 +1,17 @@
 import SwiftUI
 
+struct DetailsPanel: View {
+    let chat: Chat
+
+    var body: some View {
+        if let post = chat.lastInspected {
+            MetadataPanel(post: post).overlay(alignment: .leading) { Color.separator.frame(width: 1) }
+        } else {
+            Color.desk
+        }
+    }
+}
+
 struct MetadataPanel: View {
     let post: PostModel
     @Environment(Chat.self) private var chat

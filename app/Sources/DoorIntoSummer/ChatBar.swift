@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatBar: View {
     let chat: Chat
+    let resized: (CGFloat) -> Void
     @State private var text = ""
     @State private var selection: TextSelection?
     @State private var chosen = 0
@@ -38,7 +39,7 @@ struct ChatBar: View {
                 Text(refusal).foregroundStyle(Color.alert).textSelection(.enabled).padding(.top, 6)
             }
         }
-        .padding(.bottom, 20)
+        .padding(.bottom, Layout.barBottomPadding)
         .onChange(of: text) {
             chosen = 0
             refusal = nil
@@ -61,6 +62,7 @@ struct ChatBar: View {
             }
         }
         .task { await chat.refreshCommands() }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resized($0) }
     }
 
     private var field: some View {

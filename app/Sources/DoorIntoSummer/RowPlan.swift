@@ -166,18 +166,19 @@ private struct RowBuilder {
 
     mutating func header(_ leading: [[Span]], stamp: String?, tagging: String?) {
         part()
+        let stampLine = stamp.map { line(of: [Span($0, .faint)]) }
+        let end = Layout.horizontalPadding + content - (stampLine.map { $0.width + headerSpacing } ?? 0)
         var x = Layout.horizontalPadding
-        for (index, spans) in leading.enumerated() {
-            let line = line(of: spans)
+        for (index, spans) in leading.enumerated() where x < end {
+            let line = fitted(spans, within: end - x)
             place(line, x: x, top: y)
             if index == 0, let tagging {
                 controls.append(Control(frame: CGRect(x: x, y: y, width: line.width, height: Mono.lineHeight), title: line.text, action: .tag(tagging)))
             }
             x += line.width + headerSpacing
         }
-        if let stamp {
-            let line = line(of: [Span(stamp, .faint)])
-            place(line, x: Layout.horizontalPadding + content - line.width, top: y)
+        if let stampLine {
+            place(stampLine, x: Layout.horizontalPadding + content - stampLine.width, top: y)
         }
         y += Mono.lineHeight
     }
