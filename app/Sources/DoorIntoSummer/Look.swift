@@ -23,7 +23,6 @@ extension Font {
 enum Mono {
     static let font = NSFont(name: "JetBrainsMono-Thin", size: 11) ?? .monospacedSystemFont(ofSize: 11, weight: .thin)
     static let characterWidth = font.maximumAdvancement.width
-    static let lineHeight = font.ascender - font.descender + font.leading
 }
 
 enum Layout {
