@@ -151,8 +151,8 @@ private final class Slot {
 
     func show(_ choice: Choice, kind: TokenKind, selected: Bool, nameWidth: CGFloat, scale: CGFloat) {
         layer.backgroundColor = selected ? Self.highlight : nil
-        markerLayer.isHidden = !selected
         place(line(of: [Span(marker, .text)]), x: Layout.horizontalPadding, on: markerLayer, scale: scale)
+        markerLayer.isHidden = !selected
         place(name(of: choice, kind: kind), x: Layout.horizontalPadding + 2 * Mono.characterWidth, on: nameLayer, scale: scale)
         place(line(of: [Span(choice.about, .faint)]), x: Layout.horizontalPadding + 2 * Mono.characterWidth + nameWidth + columnGap, on: aboutLayer, scale: scale)
     }
