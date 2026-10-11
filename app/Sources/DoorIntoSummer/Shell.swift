@@ -12,9 +12,10 @@ final class ShellView: NSView {
     private let panel: NSHostingView<Leaf<DetailsPanel>>
     private let strip = DragStrip()
     private var open = false
-    private var barHeight = Layout.barHeight + Layout.barBottomPadding
+    private let barHeight = Layout.barHeight + Layout.barBottomPadding
     private var menuHeight: CGFloat = 0
-    private lazy var bar = leafView(ChatBar(chat: chat, resized: { [weak self] in self?.barResized($0) }), chat: chat)
+    private lazy var bar = leafView(ChatBar(chat: chat), chat: chat)
+    private lazy var refusalLine = RefusalView(chat: chat)
     private lazy var menuLayer = MenuView(chat: chat, resized: { [weak self] in self?.menuResized($0) })
     private lazy var observer = Observer(read: { [unowned self] in chat.inspected != nil }, apply: { [unowned self] in place(open: $0) },
                                          invalidate: { [unowned self] in needsLayout = true })
@@ -27,12 +28,13 @@ final class ShellView: NSView {
         wantsLayer = true
         addSubview(feed.scrollView)
         addSubview(bar)
+        addSubview(refusalLine)
         menuLayer.isHidden = true
         addSubview(menuLayer)
         addSubview(panel)
         addSubview(strip)
         addSubview(RefreshCounter())
-        feed.set(bottomInset: barHeight)
+        feed.set(bottomInset: Layout.lineHeight + barHeight)
         _ = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
             MainActor.assumeIsolated { self?.clicked(event) }
             return event
@@ -76,6 +78,7 @@ final class ShellView: NSView {
         observer.read()
         feed.scrollView.frame = feedFrame
         bar.frame = barFrame
+        refusalLine.frame = refusalFrame
         menuLayer.frame = menuFrame
         panel.frame = panelFrame
         strip.frame = stripFrame
@@ -99,19 +102,12 @@ final class ShellView: NSView {
         let from = panel.layer?.presentation()?.position ?? panel.layer?.position
         feed.scrollView.frame = feedFrame
         bar.frame = barFrame
+        refusalLine.frame = refusalFrame
         menuLayer.frame = menuFrame
         panel.frame = panelFrame
         if let from, let layer = panel.layer {
             layer.add(slide(from: from, to: layer.position), forKey: slideKey)
         }
-    }
-
-    private func barResized(_ height: CGFloat) {
-        guard height != barHeight else { return }
-        barHeight = height
-        feed.set(bottomInset: height)
-        menuLayer.frame = menuFrame
-        needsLayout = true
     }
 
     private func menuResized(_ height: CGFloat) {
@@ -130,11 +126,15 @@ final class ShellView: NSView {
     }
 
     private var barFrame: CGRect {
-        CGRect(x: 0, y: 0, width: feedWidth, height: barHeight)
+        CGRect(x: 0, y: Layout.lineHeight, width: feedWidth, height: barHeight)
+    }
+
+    private var refusalFrame: CGRect {
+        CGRect(x: 0, y: Layout.barBottomPadding, width: feedWidth, height: Layout.lineHeight)
     }
 
     private var menuFrame: CGRect {
-        CGRect(x: 0, y: barHeight + Layout.menuGap, width: feedWidth, height: menuHeight)
+        CGRect(x: 0, y: Layout.lineHeight + barHeight + Layout.menuGap, width: feedWidth, height: menuHeight)
     }
 
     private var panelFrame: CGRect {
