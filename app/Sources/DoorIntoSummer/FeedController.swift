@@ -26,6 +26,7 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
     private var running = false
     private var summons: UUID?
     private var width: CGFloat = 0
+    private var resizedLive = false
     private var paging = PageWindow()
     private var applying = false
     private lazy var observer = Observer(read: { [unowned self] in snapshot() }, apply: { [unowned self] in apply($0) },
@@ -170,7 +171,25 @@ final class FeedController: NSObject, NSTableViewDataSource, NSTableViewDelegate
         guard now != width, now > 0 else { return }
         width = now
         statusPlan = nil
+        resizedLive = scrollView.inLiveResize
+        keepingBottom { resizedLive ? reloadVisible() : reloadAll() }
+    }
+
+    func endLiveResize() {
+        guard resizedLive else { return }
+        resizedLive = false
         keepingBottom { reloadAll() }
+    }
+
+    private func reloadVisible() {
+        let visible = table.rows(in: table.visibleRect)
+        guard visible.location != NSNotFound, visible.length > 0 else { return }
+        let indexes = IndexSet(integersIn: visible.location ..< visible.location + visible.length)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            table.noteHeightOfRows(withIndexesChanged: indexes)
+        }
+        table.reloadData(forRowIndexes: indexes, columnIndexes: [0])
     }
 
     @objc private func scrolled(_ notification: Notification) {

@@ -254,6 +254,7 @@ final class ThreadStore {
     @ObservationIgnored private var listed: [String: [Entry]] = [:]
     @ObservationIgnored private var waitingIDs: [String] = []
     @ObservationIgnored private var windowWidth: CGFloat = 0
+    @ObservationIgnored private var plannedWidth: CGFloat = 0
     @ObservationIgnored private var measuredRatios: [URL: Ratio] = [:]
     private var changed: Set<String> = []
     @ObservationIgnored private(set) var cards: [String: Card] = [:]
@@ -578,9 +579,11 @@ final class ThreadStore {
         replan([id])
     }
 
-    func resize(window width: CGFloat) {
-        guard width > 0, width != windowWidth else { return }
+    func resize(window width: CGFloat, live: Bool) {
+        guard width > 0 else { return }
         windowWidth = width
+        guard !live, width != plannedWidth else { return }
+        plannedWidth = width
         for model in models.values {
             model.model.forgetPlans()
             prepare(model)
