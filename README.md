@@ -34,9 +34,8 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
 
 ## Run
 
-1. Start the backend: `python3 bin/review_window.py`. It prints `serving: http://127.0.0.1:8765/`, the address the app reads. On a startup check line, go back to Set up step 3.
-2. Build the app: `app/scripts/make_app.sh`.
-3. Open the app: `open "app/.build/Door into Summer.app"`.
+1. Build the app: `app/scripts/make_app.sh`.
+2. Open the app: `open "app/.build/Door into Summer.app"`.
 
 ## Use
 
@@ -56,73 +55,6 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
 
 ## Reference
 
-### Routes
-
-```
-python3 bin/review_window.py           serving: http://127.0.0.1:8765/
-python3 bin/review_window.py <port>    serving: http://127.0.0.1:<port>/, 0 for a free one
-```
-
-| Route | Answer |
-| --- | --- |
-| `GET /events` | server-sent events: `event: ready` with every card on connect, then `event: session_update` with the one card whose JSON changed and `event: session_delete` with the name of a session gone; `: alive` every 15 s without a change |
-| `GET /cards` | the cards once, as JSON |
-| `GET /image/<name>/<slot>` | the file of an image given by `path`, `<slot>` `original` or `generation`: with the `?v=<version>` of a `src`, the file of the attempt whose image in that slot has that version; without, the current card's |
-| `POST /feedback` | takes `{"session", "attempt", "text", "reference"}`, `reference` `{"job", "url"}`, left out or null without an image reference; writes the inbox message |
-| `POST /validate` | takes `{"session", "attempt"}`; files the image of that attempt, the current one or an earlier answer of the conversation, in the gallery and its line in store.jsonl |
-
-| Route | Status | When |
-| --- | --- | --- |
-| any | 403 | a Host other than `127.0.0.1:<port>` or `localhost:<port>`, or any Origin |
-| any | 404 | an unknown route |
-| `GET /image/<name>/<slot>` | 404 | no local image in that slot, or none of the version `v` names |
-| `POST` | 415 | a body other than `application/json` |
-| `POST` | 413 | a body outside 1 byte to 1 MiB |
-| `POST /feedback` | 200 `{"number"}` | the message is in the inbox, the doorbell rung or not |
-| `POST /feedback` | 422 `{"error"}` | `hy-session.sh send` refused; the error is its refusal |
-| `POST /feedback` | 400 `{"error"}` | a `job` or a `url` that is not one word of printable ASCII |
-| `POST /feedback` | 400 `{"error"}` | a `url` that is not an http or https URL with a host |
-| `POST /feedback` | 400 `{"error"}` | a `text` of more than one line beside a `reference` |
-| `POST /feedback` | 400 `{"error"}` | another body |
-| `POST /validate` | 200 `{"file"}` | the image is in the gallery and its line in store.jsonl |
-| `POST /validate` | 404 `{"error"}` | no card of `session` shows `attempt` among the answers of its conversation |
-| `POST /validate` | 404 `{"error"}` | the card names no job, or a job that is not a Higgsfield job id, 32 hex digits once its hyphens are removed |
-| `POST /validate` | 409 `{"error", "file"}` | the job is already in store.jsonl; two validations of one job file one image and one line |
-| `POST /validate` | 502 `{"error"}` | the job unread by Higgsfield |
-| `POST /validate` | 502 `{"error"}` | `result_url` not downloaded, or naming no file extension |
-| `POST /validate` | 502 `{"error"}` | `result_url` missing from the job; the job id and `result_url` are all a validation needs of it |
-| `POST /validate` | 500 `{"error"}` | the temporary file, exiftool, ImageMagick, the rename or the store line failed; the error names the path |
-| `POST /validate` | 400 `{"error"}` | another body |
-| `POST /validate` | any refusal | leaves no file in the gallery |
-
-### Command line
-
-```
-app/.build/debug/DoorIntoSummer                           opens the chat on the review server at 127.0.0.1:8765
-app/.build/debug/DoorIntoSummer --help                    prints the usage
-app/.build/debug/DoorIntoSummer <command> <arguments>     prints one line saying what happened, then exits 0, 1 or 2
-```
-
-| Case | Line | Stream | Exit |
-| --- | --- | --- | --- |
-| unknown command | `unknown command: <command>`, then the usage | stderr | 2 |
-| wrong number of arguments | `<command> expects <its arguments as the usage writes them>, got <n> arguments`, then the usage | stderr | 2 |
-| server URL that is not an http or https URL with a host | `not a server url: <text>` | stderr | 2 |
-| last argument of `send` that is neither an attempt number nor an http or https URL with a host | `not an image url: <text>` | stderr | 2 |
-| attempt of `validate` that is not a number | `not an attempt number: <text>` | stderr | 2 |
-| frame count of `events` that is not a number above 0 | `not a frame count: <text>` | stderr | 2 |
-| server that does not answer: to `GET /cards`, to a `POST`, or on `/events` before its first frame | `the review server does not answer at <url>` | stderr | 1 |
-| server that answers `GET /cards` with no cards the app can decode | `the review server at <url> answers no cards the chat can read` | stderr | 1 |
-| refusal of the server, or of the chat: a message that does not open with `@session`, or names a session that is not live | `refused: <reason>`, each reason of `send` from the server led by `@<session>: `; the lines of the messages already sent stay on stdout | stderr | 1 |
-| attempt that no post of the session shows | `no image generation <n> of @<session> on the server` | stderr | 1 |
-| attempt of `send` whose post carries no job | `no job for image generation <n> of @<session> on the server` | stderr | 1 |
-| event stream that ends before the frames asked | `the event stream ended after <seen> of <wanted> frames` | stderr | 1 |
-| success of `send` | one `@<session> attempt <n> message <number>: <text>` line per session, ` reference <job> <url>` after it with a reference, then `sent: <n> messages` | stdout | 0 |
-| success of `cards` | each card and its conversation, as [Card](#card) prints them, then `listed: <n> sessions` | stdout | 0 |
-| success of `validate` | `filed: <file name>` | stdout | 0 |
-| success of `events` | one line per event, `ready: <session> attempt <n>, ...`, `session_update: <session> attempt <n>` or `session_delete: <session>`, then `followed: <n> frames` | stdout | 0 |
-| `--help` | the usage | stdout | 0 |
-
 ### Card
 
 ```
@@ -135,7 +67,6 @@ app/.build/debug/DoorIntoSummer <command> <arguments>     prints one line saying
 | Order | newest session first |
 | Kept | its last valid content while its images.json is missing or invalid |
 | Removed | with the meta, which `hy-session.sh close` deletes |
-| Printed | `app/.build/debug/DoorIntoSummer cards <server url>`, as the app decodes it |
 | Posted | one post per session's answer of `conversation[]`, its attempt's `image generation <n>`, between the reviewer's feedbacks in the order of the conversation, the sessions interleaved by time; an answer the backend did not see reads `time unavailable` and `image unavailable` |
 | Shown | `details` on a post opens its metadata panel, `Cmd+B` opens and closes it on the last post opened; a `job` field left out reads `<field> unavailable` |
 
@@ -222,9 +153,7 @@ reference: <job id> <image url>
 | app message | `@a instruction /option @b instruction`: an instruction runs from its `@session` to the next `@` or the end. A `/command` belongs to the instruction it sits in |
 | app line 1 | `feedback · attempt <n>: @<session> <instruction>`, one message per session addressed; `<n>` is the attempt the app showed for that session |
 | app refusal | a message that does not open with `@session`, or names a session that is not live; it stays in the chat bar |
-| from a shell | `app/.build/debug/DoorIntoSummer send <server url> "@a instruction /option @b instruction" [<job> <image url> \| <session> <attempt>]` sends one message, with an image reference when a job and an image URL follow, or a session and an attempt, whose post gives the reference as `use as reference` does, and prints each session's message number |
 | read | the session moves it to `state/<name>.inbox/handled/` |
-| from a shell, more | `app/.build/debug/DoorIntoSummer cards <server url>` prints the cards as the app decodes them; `DoorIntoSummer validate <server url> <session> <attempt>` files one attempt and prints its file name; `DoorIntoSummer events <server url> [<frames>]` follows `/events` as the app does and prints each frame |
 
 ### Store line
 
@@ -273,11 +202,6 @@ reference: <job id> <image url>
 | `bin/review_window.py` | the backend |
 | `app/scripts/make_app.sh` | builds `app/.build/Door into Summer.app`, signed ad hoc, with /System/Library/Sounds/Blow.aiff copied into its Resources |
 | `app/AppIcon.icon` | the app icon, an Icon Composer document: the human's illustration as its one layer, which make_app.sh compiles with `xcrun actool` into the bundle's Assets.car and AppIcon.icns |
-| `app/.build/debug/DoorIntoSummer` | the app's command line, built by `swift build --package-path app` |
 | `app/Sources/DoorIntoSummer/Fonts` | JetBrains Mono Thin and Thin Italic, with their OFL license |
 | `app/Tests/` | `swift test --package-path app`: the message parser |
-| `tests/review-window.test.sh` | the serving, through curl: the push on `/events`, `POST /feedback` into the inboxes, the Host and Origin checks, a restart, no write beyond the inboxes |
-| `tests/validate.test.sh` | `POST /validate` |
-| `tests/match.test.sh` | `--match` |
-| `tests/reference.test.sh` | the image reference of a feedback |
 | `$TMPDIR` | each test's sandbox: a scratch `HYPNOS_HOME`, `HOME` and `DOOR_INTO_SUMMER_SUPPORT`, with fakes of `higgsfield` and `herdr` first on `PATH` |
