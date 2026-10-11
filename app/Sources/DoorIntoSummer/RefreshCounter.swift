@@ -1,14 +1,22 @@
 import AppKit
 import QuartzCore
+import SwiftUI
 
 private let widestReading = "999 fps"
+private let halfSecond: CFTimeInterval = 0.5
+private let halvesKept = 3
 
 @MainActor
 final class RefreshCounter: NSView {
+    private static let style = TextStyle(font: Mono.font, color: NSColor(Color.mention))
+
     private let reading = CALayer()
     private var link: CADisplayLink?
-    private var since: CFTimeInterval?
-    private var callbacks = 0
+    private var boundary: CFTimeInterval?
+    private var earlier = 0
+    private var previous = 0
+    private var current = 0
+    private var completeHalves = 0
     private var shown: Int?
 
     init() {
@@ -42,7 +50,7 @@ final class RefreshCounter: NSView {
         super.viewDidMoveToWindow()
         link?.invalidate()
         link = nil
-        since = nil
+        boundary = nil
         guard window != nil else { return }
         let link = displayLink(target: self, selector: #selector(refreshed(_:)))
         link.add(to: .main, forMode: .common)
@@ -55,17 +63,26 @@ final class RefreshCounter: NSView {
     }
 
     @objc private func refreshed(_ link: CADisplayLink) {
-        guard let since else {
-            self.since = link.timestamp
-            callbacks = 0
+        guard let boundary else {
+            self.boundary = link.timestamp + link.duration / 2 + halfSecond
+            (earlier, previous, current, completeHalves) = (0, 0, 0, 0)
             return
         }
-        callbacks += 1
-        let elapsed = link.timestamp - since
-        guard elapsed >= 1 else { return }
-        let rate = Int((Double(callbacks) / elapsed).rounded())
-        self.since = link.timestamp
-        callbacks = 0
+        if link.timestamp > boundary {
+            let crossed = Int((link.timestamp - boundary) / halfSecond) + 1
+            self.boundary = boundary + Double(crossed) * halfSecond
+            for _ in 0..<min(crossed, halvesKept) {
+                (earlier, previous, current) = (previous, current, 0)
+            }
+            completeHalves = min(completeHalves + crossed, 2)
+            if completeHalves == 2 {
+                show(earlier + previous)
+            }
+        }
+        current += 1
+    }
+
+    private func show(_ rate: Int) {
         guard rate != shown else { return }
         shown = rate
         placeReading()
@@ -73,7 +90,7 @@ final class RefreshCounter: NSView {
 
     private func placeReading() {
         guard let shown else { return }
-        let text = line(of: [Span("\(shown) fps", .faint)])
+        let text = line(of: [Span("\(shown) fps", Self.style)])
         guard let raster = TextRasters.shared.raster(of: text, x: bounds.width - text.width, bottom: (bounds.height - Mono.lineHeight) / 2, scale: scale) else { return }
         reading.frame = raster.frame
         reading.contents = raster.image
