@@ -14,7 +14,6 @@ struct DetailsPanel: View {
 
 struct MetadataPanel: View {
     let post: PostModel
-    @Environment(Chat.self) private var chat
 
     var body: some View {
         ScrollView {
@@ -22,8 +21,6 @@ struct MetadataPanel: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text("@\(post.session)").font(.monoItalic)
                     Text("image generation \(post.attempt)").foregroundStyle(Color.tertiaryText)
-                    Spacer()
-                    Button("×") { chat.inspect(nil) }.buttonStyle(.pointing).foregroundStyle(Color.tertiaryText)
                 }
                 Grid(alignment: .topLeading, horizontalSpacing: 7, verticalSpacing: 6) {
                     ForEach(fields(of: post)) { field in
