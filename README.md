@@ -276,7 +276,6 @@ reference: <job id> <image url>
 | `app/.build/debug/DoorIntoSummer` | the app's command line, built by `swift build --package-path app` |
 | `app/Sources/DoorIntoSummer/Fonts` | JetBrains Mono Thin and Thin Italic, with their OFL license |
 | `app/Tests/` | `swift test --package-path app`: the message parser |
-| `app/Tests/chat-client.test.sh` | each line of the backend contract the app reads, through its command line, and each exit of [Command line](#command-line) |
 | `tests/review-window.test.sh` | the serving, through curl: the push on `/events`, `POST /feedback` into the inboxes, the Host and Origin checks, a restart, no write beyond the inboxes |
 | `tests/validate.test.sh` | `POST /validate` |
 | `tests/match.test.sh` | `--match` |
