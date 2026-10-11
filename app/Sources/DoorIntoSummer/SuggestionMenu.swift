@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 private let markerColumn = "❯ "
@@ -9,7 +10,6 @@ struct SuggestionMenu: View {
     let chosen: Int
     let hovered: (Int) -> Void
     let picked: (Int) -> Void
-    @State private var topRow: Choice.ID?
 
     var body: some View {
         ScrollViewReader { reader in
@@ -32,8 +32,10 @@ struct SuggestionMenu: View {
                 .padding(.horizontal, Layout.horizontalPadding)
             }
             .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $topRow)
-            .sensoryFeedback(.alignment, trigger: topRow)
+            .onScrollGeometryChange(for: Int.self) { Int(($0.contentOffset.y / Layout.lineHeight).rounded(.down)) } action: { previous, row in
+                guard previous != row else { return }
+                NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+            }
             .scrollIndicators(.hidden)
             .frame(height: CGFloat(min(max(choices.count, 1), Layout.menuRows)) * Layout.lineHeight)
             .background(Color.desk)
