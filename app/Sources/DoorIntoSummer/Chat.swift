@@ -28,6 +28,7 @@ final class Chat {
     var menu: MenuState?
     var menuHover: Int?
     var menuPick: Int?
+    var refusal: String?
 
     private let board: Board
     private let skillsRoot: URL

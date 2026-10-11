@@ -2,12 +2,10 @@ import SwiftUI
 
 struct ChatBar: View {
     let chat: Chat
-    let resized: (CGFloat) -> Void
     @State private var text = ""
     @State private var selection: TextSelection?
     @State private var chosen = 0
     @State private var dismissed: Token?
-    @State private var refusal: String?
     @FocusState private var focused: Bool
 
     private var caret: String.Index {
@@ -31,14 +29,8 @@ struct ChatBar: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            field
-            if let refusal {
-                Text(refusal).foregroundStyle(Color.alert).textSelection(.enabled).padding(.top, 6)
-            }
-        }
+        field
         .padding(.bottom, Layout.barBottomPadding)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resized($0) }
         .onChange(of: menuState, initial: true) { chat.menu = menuState }
         .onChange(of: chat.menuHover) {
             guard let index = chat.menuHover else { return }
@@ -52,7 +44,7 @@ struct ChatBar: View {
         }
         .onChange(of: text) {
             chosen = 0
-            refusal = nil
+            chat.refusal = nil
             if token(in: text, caret: caret) != dismissed {
                 dismissed = nil
             }
@@ -138,8 +130,9 @@ struct ChatBar: View {
         let message = text
         guard !message.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         Task {
-            refusal = await chat.send(message)
-            if refusal == nil, text == message {
+            let refused = await chat.send(message)
+            chat.refusal = refused
+            if refused == nil, text == message {
                 text = ""
             }
         }
