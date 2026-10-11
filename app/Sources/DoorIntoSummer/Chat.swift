@@ -23,6 +23,7 @@ final class Chat {
     private(set) var inspected: PostModel?
     private(set) var lastInspected: PostModel?
     private(set) var summons: Summons?
+    private(set) var focusRequests = 0
     var tagging: String?
 
     private let board: Board
@@ -126,6 +127,10 @@ final class Chat {
 
     func compose(tagging session: String) {
         tagging = session
+    }
+
+    func requestBarFocus() {
+        focusRequests += 1
     }
 
     func refreshCommands() async {

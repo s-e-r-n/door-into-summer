@@ -29,6 +29,10 @@ final class ShellView: NSView {
         addSubview(strip)
         addSubview(RefreshCounter())
         feed.set(bottomInset: barHeight)
+        _ = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
+            MainActor.assumeIsolated { self?.clicked(event) }
+            return event
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -37,9 +41,28 @@ final class ShellView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window != nil {
-            needsLayout = true
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        guard let window else { return }
+        needsLayout = true
+        NotificationCenter.default.addObserver(self, selector: #selector(becameKey), name: NSWindow.didBecomeKeyNotification, object: window)
+        focusBar()
+    }
+
+    @objc private func becameKey(_ notification: Notification) {
+        focusBar()
+    }
+
+    private func clicked(_ event: NSEvent) {
+        guard let window, event.window === window, !bar.frame.contains(convert(event.locationInWindow, from: nil)) else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.focusBar()
         }
+    }
+
+    private func focusBar() {
+        guard let window, (window.firstResponder as? NSView)?.isDescendant(of: bar) != true else { return }
+        window.makeFirstResponder(bar)
+        chat.requestBarFocus()
     }
 
     override func layout() {
