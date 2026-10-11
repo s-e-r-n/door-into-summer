@@ -9,7 +9,6 @@ struct ChatBar: View {
     @State private var dismissed: Token?
     @State private var refusal: String?
     @FocusState private var focused: Bool
-    @Environment(\.appearsActive) private var appearsActive
 
     private var caret: String.Index {
         if case .selection(let range)? = selection?.indices, range.upperBound <= text.endIndex {
@@ -55,11 +54,8 @@ struct ChatBar: View {
             focused = true
             chat.tagging = nil
         }
-        .defaultFocus($focused, true)
-        .onChange(of: appearsActive) {
-            if appearsActive {
-                focused = true
-            }
+        .onChange(of: chat.focusRequests, initial: true) {
+            focused = true
         }
         .task { await chat.refreshCommands() }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resized($0) }

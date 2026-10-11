@@ -19,7 +19,6 @@ func mainWindow(content: NSView) -> NSWindow {
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
     window.contentView = content
-    window.initialFirstResponder = content
     return window
 }
 
