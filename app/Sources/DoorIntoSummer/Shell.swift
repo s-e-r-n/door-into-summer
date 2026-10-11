@@ -15,7 +15,7 @@ final class ShellView: NSView {
     private var barHeight = Layout.barHeight + Layout.barBottomPadding
     private var menuHeight: CGFloat = 0
     private lazy var bar = leafView(ChatBar(chat: chat, resized: { [weak self] in self?.barResized($0) }), chat: chat)
-    private lazy var menuLayer = leafView(MenuLayer(chat: chat, resized: { [weak self] in self?.menuResized($0) }), chat: chat)
+    private lazy var menuLayer = MenuView(chat: chat, resized: { [weak self] in self?.menuResized($0) })
     private lazy var observer = Observer(read: { [unowned self] in chat.inspected != nil }, apply: { [unowned self] in place(open: $0) },
                                          invalidate: { [unowned self] in needsLayout = true })
 
