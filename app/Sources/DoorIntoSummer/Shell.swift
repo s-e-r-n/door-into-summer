@@ -44,7 +44,7 @@ final class ShellView: NSView {
 
     override func layout() {
         super.layout()
-        chat.thread.resize(window: bounds.width)
+        chat.thread.resize(window: bounds.width, live: inLiveResize)
         chat.images.resize(content: contentWidth(at: bounds.width), scale: window?.backingScaleFactor ?? 2)
         observer.read()
         feed.scrollView.frame = feedFrame
@@ -56,6 +56,13 @@ final class ShellView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         needsLayout = true
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        layoutSubtreeIfNeeded()
+        chat.thread.resize(window: bounds.width, live: false)
+        feed.endLiveResize()
     }
 
     private func place(open: Bool) {
