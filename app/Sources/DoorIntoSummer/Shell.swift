@@ -13,7 +13,9 @@ final class ShellView: NSView {
     private let strip = DragStrip()
     private var open = false
     private var barHeight = Layout.barHeight + Layout.barBottomPadding
-    private lazy var bar = leafView(ChatBar(chat: chat, resized: { [weak self] in self?.barResized($0) }), chat: chat)
+    private var menuHeight: CGFloat = 0
+    private lazy var bar = leafView(ChatBar(chat: chat, resized: { [weak self] in self?.barResized($0) },
+                                            menuResized: { [weak self] in self?.menuResized($0) }), chat: chat)
     private lazy var observer = Observer(read: { [unowned self] in chat.inspected != nil }, apply: { [unowned self] in place(open: $0) },
                                          invalidate: { [unowned self] in needsLayout = true })
 
@@ -107,6 +109,12 @@ final class ShellView: NSView {
         needsLayout = true
     }
 
+    private func menuResized(_ height: CGFloat) {
+        guard height != menuHeight else { return }
+        menuHeight = height
+        bar.frame = barFrame
+    }
+
     private var feedWidth: CGFloat {
         bounds.width - (open ? Layout.panelWidth : 0)
     }
@@ -116,7 +124,7 @@ final class ShellView: NSView {
     }
 
     private var barFrame: CGRect {
-        CGRect(x: 0, y: 0, width: feedWidth, height: barHeight)
+        CGRect(x: 0, y: 0, width: feedWidth, height: barHeight + menuHeight)
     }
 
     private var panelFrame: CGRect {

@@ -3,6 +3,7 @@ import SwiftUI
 struct ChatBar: View {
     let chat: Chat
     let resized: (CGFloat) -> Void
+    let menuResized: (CGFloat) -> Void
     @State private var text = ""
     @State private var selection: TextSelection?
     @State private var chosen = 0
@@ -26,19 +27,28 @@ struct ChatBar: View {
         currentToken.map { choices(for: $0, sessions: chat.thread.sessions, commands: chat.commands) } ?? []
     }
 
+    private var menuHeight: CGFloat {
+        currentToken == nil ? 0 : SuggestionMenu.height(choices: currentChoices.count) + Layout.menuGap
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if let currentToken {
-                SuggestionMenu(kind: currentToken.kind, choices: currentChoices, chosen: chosen,
-                               hovered: { chosen = $0 }, picked: { pick($0) })
-                    .padding(.bottom, Layout.menuGap)
-            }
             field
             if let refusal {
                 Text(refusal).foregroundStyle(Color.alert).textSelection(.enabled).padding(.top, 6)
             }
         }
         .padding(.bottom, Layout.barBottomPadding)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resized($0) }
+        .overlay(alignment: .top) {
+            if let currentToken {
+                SuggestionMenu(kind: currentToken.kind, choices: currentChoices, chosen: chosen,
+                               hovered: { chosen = $0 }, picked: { pick($0) })
+                    .alignmentGuide(.top) { $0[.bottom] + Layout.menuGap }
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .onChange(of: menuHeight, initial: true) { menuResized(menuHeight) }
         .onChange(of: text) {
             chosen = 0
             refusal = nil
@@ -58,7 +68,6 @@ struct ChatBar: View {
             focused = true
         }
         .task { await chat.refreshCommands() }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resized($0) }
     }
 
     private var field: some View {

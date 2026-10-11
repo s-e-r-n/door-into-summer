@@ -37,11 +37,15 @@ struct SuggestionMenu: View {
                 NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
             }
             .scrollIndicators(.hidden)
-            .frame(height: CGFloat(min(max(choices.count, 1), Layout.menuRows)) * Layout.lineHeight)
+            .frame(height: Self.height(choices: choices.count))
             .background(Color.desk)
             .onChange(of: chosen, initial: true) { scrollToChosen(reader) }
             .onChange(of: choices.map(\.id)) { scrollToChosen(reader) }
         }
+    }
+
+    static func height(choices: Int) -> CGFloat {
+        CGFloat(min(max(choices, 1), Layout.menuRows)) * Layout.lineHeight
     }
 
     private func scrollToChosen(_ reader: ScrollViewProxy) {
