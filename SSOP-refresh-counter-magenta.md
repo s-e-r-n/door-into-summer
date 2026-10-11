@@ -32,3 +32,4 @@ Batches: 1. RefreshCounter.swift.
 ## Amendments
 
 - The counter takes nothing from the app's look: its colour (`rosePineMoonAnsi35`, #c4a7e7), font, size, band height and right inset are one `CounterLook` value declared in RefreshCounter.swift, and a `CATextLayer` draws its text, so it needs neither `TextRasters`, `line(of:)`, `Span`, `TextStyle`, `Color.mention`, `Mono`, `Glyphs` nor `Layout`.
+- The colour becomes `xtermColor13BrightMagenta`, #FF00FF, colour 13 of the 256-colour xterm palette, opaque; the font stays JetBrains Mono Thin, the one weight bundled (app/Sources/DoorIntoSummer/Fonts) or installed, a static font without a weight axis.

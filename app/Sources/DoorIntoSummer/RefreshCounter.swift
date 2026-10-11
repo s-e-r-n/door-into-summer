@@ -14,9 +14,9 @@ private struct CounterLook {
 
 @MainActor
 final class RefreshCounter: NSView {
-    private static let rosePineMoonAnsi35 = CGColor(srgbRed: 0xc4 / 255, green: 0xa7 / 255, blue: 0xe7 / 255, alpha: 1)
+    private static let xtermColor13BrightMagenta = CGColor(srgbRed: 1, green: 0, blue: 1, alpha: 1)
     private static let look = CounterLook(
-        color: rosePineMoonAnsi35,
+        color: xtermColor13BrightMagenta,
         font: NSFont(name: "JetBrainsMono-Thin", size: 11) ?? .monospacedSystemFont(ofSize: 11, weight: .thin),
         bandHeight: 20,
         trailingInset: 32
