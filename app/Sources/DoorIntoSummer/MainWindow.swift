@@ -8,6 +8,7 @@ func mainWindow(content: NSView) -> NSWindow {
     window.title = "Door into Summer"
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
+    window.titlebarSeparatorStyle = .none
     for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
         window.standardWindowButton(button)?.isHidden = true
     }
