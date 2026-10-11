@@ -4,6 +4,7 @@ import ImageIO
 import SwiftUI
 
 private let decodedBudget = 256 << 20
+private let downloadsBudget = 1_000_000_000
 private let downloads = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
     .appending(path: "com.waveprom.door-into-summer/images", directoryHint: .isDirectory)
 
@@ -92,6 +93,7 @@ final class ImageStore {
     }
 }
 
+@concurrent
 private func downloaded(_ url: URL, to file: URL) async -> URL? {
     if FileManager.default.fileExists(atPath: file.path) {
         return file
@@ -105,7 +107,24 @@ private func downloaded(_ url: URL, to file: URL) async -> URL? {
         try? FileManager.default.removeItem(at: temporary)
         return FileManager.default.fileExists(atPath: file.path) ? file : nil
     }
+    trimDownloads(keeping: file)
     return file
+}
+
+private func trimDownloads(keeping landed: URL) {
+    let keys: Set<URLResourceKey> = [.contentModificationDateKey, .fileSizeKey]
+    guard let found = try? FileManager.default.contentsOfDirectory(at: downloads, includingPropertiesForKeys: Array(keys)) else { return }
+    let files = found.compactMap { file -> (file: URL, modified: Date, size: Int)? in
+        guard let values = try? file.resourceValues(forKeys: keys), let modified = values.contentModificationDate, let size = values.fileSize else { return nil }
+        return (file, modified, size)
+    }.sorted { $0.modified < $1.modified }
+    var total = files.reduce(0) { $0 + $1.size }
+    for entry in files where entry.file.lastPathComponent != landed.lastPathComponent {
+        guard total > downloadsBudget else { return }
+        if (try? FileManager.default.removeItem(at: entry.file)) != nil {
+            total -= entry.size
+        }
+    }
 }
 
 @concurrent
