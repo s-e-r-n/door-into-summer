@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 
 private let unavailableInset: CGFloat = 12
-private let separatorThickness: CGFloat = 1
 private let insetBarWidth: CGFloat = 2
 private let boxLevel: CGFloat = 1
 
@@ -10,7 +9,6 @@ private let boxLevel: CGFloat = 1
 final class RowView: NSView {
     static let identifier = NSUserInterfaceItemIdentifier("row")
     private static let highlight = NSColor(Color.reviewerRow)
-    private static let separator = NSColor(Color.separator)
     private static let insetBar = NSColor(Color.secondaryText)
 
     private let images: ImageStore
@@ -19,7 +17,6 @@ final class RowView: NSView {
     private var act: (RowAction) -> Void = { _ in }
     private var measured: (URL, Ratio) -> Void = { _, _ in }
     private var buttons: [HandButton] = []
-    private let separator = stillLayer()
     private let insetBar = stillLayer()
     private var lineLayers: [CALayer] = []
     private var boxLayers: [Int: CALayer] = [:]
@@ -32,10 +29,8 @@ final class RowView: NSView {
         super.init(frame: .zero)
         identifier = Self.identifier
         wantsLayer = true
-        separator.backgroundColor = Self.separator.cgColor
         insetBar.backgroundColor = Self.insetBar.cgColor
         insetBar.isHidden = true
-        layer?.addSublayer(separator)
         layer?.addSublayer(insetBar)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
@@ -76,7 +71,6 @@ final class RowView: NSView {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        separator.frame = CGRect(x: 0, y: newSize.height - separatorThickness, width: newSize.width, height: separatorThickness)
         insetBar.frame = CGRect(x: 0, y: 0, width: insetBarWidth, height: newSize.height)
     }
 

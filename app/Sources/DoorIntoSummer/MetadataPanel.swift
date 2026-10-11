@@ -5,7 +5,7 @@ struct DetailsPanel: View {
 
     var body: some View {
         if let post = chat.lastInspected {
-            MetadataPanel(post: post).overlay(alignment: .leading) { Color.separator.frame(width: 1) }
+            MetadataPanel(post: post)
         } else {
             Color.desk
         }
