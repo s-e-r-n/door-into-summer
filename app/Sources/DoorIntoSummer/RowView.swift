@@ -234,7 +234,7 @@ final class RowView: NSView {
 }
 
 @MainActor
-private func stillLayer() -> CALayer {
+func stillLayer() -> CALayer {
     let layer = CALayer()
     layer.actions = ["contents": NSNull(), "position": NSNull(), "bounds": NSNull(), "sublayers": NSNull(), "backgroundColor": NSNull(), "hidden": NSNull()]
     return layer

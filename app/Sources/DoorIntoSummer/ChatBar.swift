@@ -26,19 +26,30 @@ struct ChatBar: View {
         currentToken.map { choices(for: $0, sessions: chat.thread.sessions, commands: chat.commands) } ?? []
     }
 
+    private var menuState: MenuState? {
+        currentToken.map { MenuState(kind: $0.kind, choices: currentChoices, chosen: chosen) }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if let currentToken {
-                SuggestionMenu(kind: currentToken.kind, choices: currentChoices, chosen: chosen,
-                               hovered: { chosen = $0 }, picked: { pick($0) })
-                    .padding(.bottom, Layout.menuGap)
-            }
             field
             if let refusal {
                 Text(refusal).foregroundStyle(Color.alert).textSelection(.enabled).padding(.top, 6)
             }
         }
         .padding(.bottom, Layout.barBottomPadding)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resized($0) }
+        .onChange(of: menuState, initial: true) { chat.menu = menuState }
+        .onChange(of: chat.menuHover) {
+            guard let index = chat.menuHover else { return }
+            chosen = index
+            chat.menuHover = nil
+        }
+        .onChange(of: chat.menuPick) {
+            guard let index = chat.menuPick else { return }
+            pick(index)
+            chat.menuPick = nil
+        }
         .onChange(of: text) {
             chosen = 0
             refusal = nil
@@ -58,7 +69,6 @@ struct ChatBar: View {
             focused = true
         }
         .task { await chat.refreshCommands() }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resized($0) }
     }
 
     private var field: some View {

@@ -25,6 +25,9 @@ final class Chat {
     private(set) var summons: Summons?
     private(set) var focusRequests = 0
     var tagging: String?
+    var menu: MenuState?
+    var menuHover: Int?
+    var menuPick: Int?
 
     private let board: Board
     private let skillsRoot: URL
