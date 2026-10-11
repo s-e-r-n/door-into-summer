@@ -1,5 +1,11 @@
 import Foundation
 
+struct MenuState: Equatable {
+    let kind: TokenKind
+    let choices: [Choice]
+    let chosen: Int
+}
+
 enum TokenKind: Equatable, Sendable {
     case session
     case command

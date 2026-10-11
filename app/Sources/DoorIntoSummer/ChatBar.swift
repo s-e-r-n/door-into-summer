@@ -3,7 +3,6 @@ import SwiftUI
 struct ChatBar: View {
     let chat: Chat
     let resized: (CGFloat) -> Void
-    let menuResized: (CGFloat) -> Void
     @State private var text = ""
     @State private var selection: TextSelection?
     @State private var chosen = 0
@@ -27,8 +26,8 @@ struct ChatBar: View {
         currentToken.map { choices(for: $0, sessions: chat.thread.sessions, commands: chat.commands) } ?? []
     }
 
-    private var menuHeight: CGFloat {
-        currentToken == nil ? 0 : SuggestionMenu.height(choices: currentChoices.count) + Layout.menuGap
+    private var menuState: MenuState? {
+        currentToken.map { MenuState(kind: $0.kind, choices: currentChoices, chosen: chosen) }
     }
 
     var body: some View {
@@ -40,15 +39,17 @@ struct ChatBar: View {
         }
         .padding(.bottom, Layout.barBottomPadding)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resized($0) }
-        .overlay(alignment: .top) {
-            if let currentToken {
-                SuggestionMenu(kind: currentToken.kind, choices: currentChoices, chosen: chosen,
-                               hovered: { chosen = $0 }, picked: { pick($0) })
-                    .alignmentGuide(.top) { $0[.bottom] + Layout.menuGap }
-            }
+        .onChange(of: menuState, initial: true) { chat.menu = menuState }
+        .onChange(of: chat.menuHover) {
+            guard let index = chat.menuHover else { return }
+            chosen = index
+            chat.menuHover = nil
         }
-        .frame(maxHeight: .infinity, alignment: .bottom)
-        .onChange(of: menuHeight, initial: true) { menuResized(menuHeight) }
+        .onChange(of: chat.menuPick) {
+            guard let index = chat.menuPick else { return }
+            pick(index)
+            chat.menuPick = nil
+        }
         .onChange(of: text) {
             chosen = 0
             refusal = nil

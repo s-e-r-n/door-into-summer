@@ -4,6 +4,26 @@ import SwiftUI
 private let markerColumn = "❯ "
 private let columnGap: CGFloat = 14
 
+struct MenuLayer: View {
+    let chat: Chat
+    let resized: (CGFloat) -> Void
+
+    private var height: CGFloat {
+        chat.menu.map { SuggestionMenu.height(choices: $0.choices.count) } ?? 0
+    }
+
+    var body: some View {
+        Group {
+            if let menu = chat.menu {
+                SuggestionMenu(kind: menu.kind, choices: menu.choices, chosen: menu.chosen,
+                               hovered: { chat.menuHover = $0 }, picked: { chat.menuPick = $0 })
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: height, initial: true) { resized(height) }
+    }
+}
+
 struct SuggestionMenu: View {
     let kind: TokenKind
     let choices: [Choice]
