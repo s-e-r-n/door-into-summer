@@ -31,7 +31,7 @@ struct ChatBar: View {
             if let currentToken {
                 SuggestionMenu(kind: currentToken.kind, choices: currentChoices, chosen: chosen,
                                hovered: { chosen = $0 }, picked: { pick($0) })
-                    .padding(.bottom, 32)
+                    .padding(.bottom, Layout.menuGap)
             }
             field
             if let refusal {

@@ -49,7 +49,8 @@ enum Layout {
     static let barHeight: CGFloat = 32
     static let barInset: CGFloat = 11
     static let barBottomPadding: CGFloat = 20
-    static let menuHeight: CGFloat = 80
+    static let menuRows = 4
+    static let menuGap: CGFloat = 2
     static let lineHeight: CGFloat = 11 * 1.6
     static let titleBarHeight: CGFloat = 20
 }

@@ -1,5 +1,8 @@
 import SwiftUI
 
+private let markerColumn = "❯ "
+private let columnGap: CGFloat = 14
+
 struct SuggestionMenu: View {
     let kind: TokenKind
     let choices: [Choice]
@@ -10,9 +13,9 @@ struct SuggestionMenu: View {
     var body: some View {
         ScrollViewReader { reader in
             ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 0) {
                     if choices.isEmpty {
-                        Text(empty).foregroundStyle(Color.tertiaryText)
+                        Text(empty).foregroundStyle(Color.tertiaryText).frame(height: Layout.lineHeight)
                     }
                     ForEach(Array(choices.enumerated()), id: \.element.id) { index, choice in
                         row(choice, selected: index == chosen)
@@ -23,18 +26,22 @@ struct SuggestionMenu: View {
                             .pointerStyle(.link)
                     }
                 }
+                .scrollTargetLayout()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 8)
                 .padding(.horizontal, Layout.horizontalPadding)
             }
+            .scrollTargetBehavior(.viewAligned)
             .scrollIndicators(.hidden)
-            .frame(height: Layout.menuHeight)
+            .frame(height: CGFloat(min(max(choices.count, 1), Layout.menuRows)) * Layout.lineHeight)
             .background(Color.desk)
-            .onChange(of: chosen, initial: true) {
-                if choices.indices.contains(chosen) {
-                    reader.scrollTo(choices[chosen].id)
-                }
-            }
+            .onChange(of: chosen, initial: true) { scrollToChosen(reader) }
+            .onChange(of: choices.map(\.id)) { scrollToChosen(reader) }
+        }
+    }
+
+    private func scrollToChosen(_ reader: ScrollViewProxy) {
+        if choices.indices.contains(chosen) {
+            reader.scrollTo(choices[chosen].id)
         }
     }
 
@@ -45,20 +52,20 @@ struct SuggestionMenu: View {
         }
     }
 
+    private var nameColumnWidth: CGFloat {
+        CGFloat(choices.map(\.value.count).max() ?? 0) * Mono.characterWidth
+    }
+
     private func row(_ choice: Choice, selected: Bool) -> some View {
-        GeometryReader { geometry in
-            HStack(alignment: .top, spacing: 0) {
-                HStack(spacing: 0) {
-                    Text(selected ? "❯ " : "  ")
-                    highlighted(choice).font(kind == .session ? .monoItalic : .mono).lineLimit(1)
-                }
-                .frame(width: geometry.size.width * 0.4, alignment: .leading)
-                Text(choice.about).lineLimit(2).truncationMode(.tail).padding(.leading, 14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .foregroundStyle(selected ? Color.white : Color.tertiaryText)
+        HStack(spacing: 0) {
+            Text(selected ? markerColumn : "").frame(width: CGFloat(markerColumn.count) * Mono.characterWidth, alignment: .leading)
+            highlighted(choice).font(kind == .session ? .monoItalic : .mono).lineLimit(1)
+                .frame(width: nameColumnWidth, alignment: .leading)
+            Text(choice.about).lineLimit(1).truncationMode(.tail).padding(.leading, columnGap)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: Layout.lineHeight * 2)
+        .frame(height: Layout.lineHeight)
+        .foregroundStyle(selected ? Color.white : Color.tertiaryText)
     }
 
     private func highlighted(_ choice: Choice) -> Text {
