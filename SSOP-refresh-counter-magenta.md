@@ -28,3 +28,7 @@ Batches: 1. RefreshCounter.swift.
 | The refreshes of the three last half seconds | RefreshCounter | RefreshCounter | `refreshed(_:)` |
 | The end of the current half second | RefreshCounter | RefreshCounter | `refreshed(_:)`, reset by `viewDidMoveToWindow` |
 | The rate shown | RefreshCounter | the render server, through the sublayer's contents | `show(_:)` |
+
+## Amendments
+
+- The counter takes nothing from the app's look: its colour (`rosePineMoonAnsi35`, #c4a7e7), font, size, band height and right inset are one `CounterLook` value declared in RefreshCounter.swift, and a `CATextLayer` draws its text, so it needs neither `TextRasters`, `line(of:)`, `Span`, `TextStyle`, `Color.mention`, `Mono`, `Glyphs` nor `Layout`.
