@@ -3,7 +3,8 @@ import CoreText
 import Foundation
 
 func registeredFonts() {
-    guard let fonts = Bundle.module.urls(forResourcesWithExtension: "ttf", subdirectory: "Fonts") else { return }
+    let resources = Bundle.main.url(forResource: "DoorIntoSummer_DoorIntoSummer", withExtension: "bundle").flatMap(Bundle.init(url:))
+    guard let fonts = resources?.urls(forResourcesWithExtension: "ttf", subdirectory: "Fonts") else { return }
     CTFontManagerRegisterFontURLs(fonts as CFArray, .process, true, nil)
 }
 
