@@ -64,10 +64,10 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
 
 | Card    | Rule                                                                                                                                                                                                                                                                             |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| One per | live session, whose `state/<name>.meta` exists, once it has written a valid images.json                                                                                                                                                                                          |
+| One per | live session, whose `state/<name>.meta` exists in one of the homes of [Paths](#paths), once it has written a valid images.json; a name two homes hold shows the session of the first of them in the order of the homes                                                           |
 | Order   | newest session first                                                                                                                                                                                                                                                             |
 | Kept    | its last valid content while its images.json is missing or invalid                                                                                                                                                                                                               |
-| Removed | with the meta, which `hy-session.sh close` deletes                                                                                                                                                                                                                               |
+| Removed | with the meta, which `hy-session.sh close` deletes, or with its home, which `hy-thanatos.sh collect` deletes                                                                                                                                                                     |
 | Posted  | one post per session's answer of `conversation[]`, its attempt's `image generation <n>`, between the reviewer's feedbacks in the order of the conversation, the sessions interleaved by time; an answer the backend did not see reads `time unavailable` and `image unavailable` |
 | Shown   | `details` on a post opens its metadata panel, `Cmd+B` opens and closes it on the last post opened; a `job` field left out reads `<field> unavailable`                                                                                                                            |
 
@@ -126,17 +126,17 @@ Door into Summer, a macOS 26 chat: the reviewer sees each image a hypnos session
  "job": "<higgsfield job id>", "working": {"aspect": "<w>:<h>"}}
 ```
 
-| Field             | Rule                                                                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| file              | `${HYPNOS_HOME}/data/<name>/images.json`, written by the image session at each attempt, whole, by renaming a finished file over it            |
-| `original`        | left out or null when the generation starts from no photo                                                                                     |
-| `url`             | an image URL, such as the `result_url` of a generation                                                                                        |
-| `path`            | a local image file, served at `/image/<name>/<slot>`                                                                                          |
-| `job`             | the Higgsfield job of the generation shown, left out when there is none                                                                       |
-| `working`         | written when the session starts the next generation, with the ratio it asked for; the next attempt's images.json, written without it, ends it |
-| invalid file      | the card stays as it was                                                                                                                      |
-| invalid `job`     | a `job` that is not a one-line string is dropped; the rest of the card shows                                                                  |
-| invalid `working` | a `working` whose aspect is not two positive integers of at most 4 digits is dropped; the rest of the card shows                              |
+| Field             | Rule                                                                                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| file              | `data/<name>/images.json` under the home of the session's meta, its own `$HYPNOS_HOME`, written by the image session at each attempt, whole, by renaming a finished file over it |
+| `original`        | left out or null when the generation starts from no photo                                                                                                                        |
+| `url`             | an image URL, such as the `result_url` of a generation                                                                                                                           |
+| `path`            | a local image file, served at `/image/<name>/<slot>`                                                                                                                             |
+| `job`             | the Higgsfield job of the generation shown, left out when there is none                                                                                                          |
+| `working`         | written when the session starts the next generation, with the ratio it asked for; the next attempt's images.json, written without it, ends it                                    |
+| invalid file      | the card stays as it was                                                                                                                                                         |
+| invalid `job`     | a `job` that is not a one-line string is dropped; the rest of the card shows                                                                                                     |
+| invalid `working` | a `working` whose aspect is not two positive integers of at most 4 digits is dropped; the rest of the card shows                                                                 |
 
 ### Inbox message
 
@@ -147,10 +147,10 @@ reference: <job id> <image url>
 
 | Part        | Rule                                                                                                                                                                          |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| file        | `state/<name>.inbox/<NNN>.msg`, one per feedback                                                                                                                              |
+| file        | `state/<name>.inbox/<NNN>.msg` under the home of the session's meta, one per feedback                                                                                         |
 | line 1      | the feedback; `<n>` is the attempt the card showed when it was written                                                                                                        |
 | line 2      | only with an image reference: `<job id>` the Higgsfield job of the image, `<image url>` its http or https URL, each one word of printable ASCII; `<text>` then holds one line |
-| written by  | `~/.hypnos/bin/hy-session.sh send <session> "feedback · attempt <n>: <text>"`, the backend's only write into hypnos                                                           |
+| written by  | `HYPNOS_HOME=<the session's home> ~/.hypnos/bin/hy-session.sh send <session> "feedback · attempt <n>: <text>"`, the backend's only write into hypnos                          |
 | app message | `@a instruction /option @b instruction`: an instruction runs from its `@session` to the next `@` or the end. A `/command` belongs to the instruction it sits in               |
 | app line 1  | `feedback · attempt <n>: @<session> <instruction>`, one message per session addressed; `<n>` is the attempt the app showed for that session                                   |
 | app refusal | a message that does not open with `@session`, or names a session that is not live; it stays in the chat bar                                                                   |
@@ -181,15 +181,16 @@ reference: <job id> <image url>
 
 ### Paths
 
-| hypnos path                   | Holds                                                    |
-| ----------------------------- | -------------------------------------------------------- |
-| `${HYPNOS_HOME:-~/.hypnos}`   | the sessions, read by the backend                        |
-| `state/<name>.meta`           | one live session                                         |
-| `data/<name>/images.json`     | its images.json                                          |
-| `state/<name>.inbox/`         | its unread inbox messages                                |
-| `state/<name>.inbox/handled/` | its read inbox messages                                  |
-| `~/.hypnos/bin/hy-session.sh` | `send` writes an inbox message, `close` deletes the meta |
-| `~/.hypnos/skills`            | the skills offered as `/` commands                       |
+| hypnos path                          | Holds                                                                                                                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `${HYPNOS_HOME:-~/.hypnos}`          | the main home, the first home whose sessions the backend reads                                                                                                    |
+| `<main home>/state/thanatos/<name>/` | a Thanatos home, read after the main home in name order while it holds a `state/` directory; its sessions show and drop with the directory while the backend runs |
+| `<home>/state/<name>.meta`           | one live session of that home                                                                                                                                     |
+| `<home>/data/<name>/images.json`     | its images.json                                                                                                                                                   |
+| `<home>/state/<name>.inbox/`         | its unread inbox messages                                                                                                                                         |
+| `<home>/state/<name>.inbox/handled/` | its read inbox messages                                                                                                                                           |
+| `~/.hypnos/bin/hy-session.sh`        | `send`, run with the session's home as `HYPNOS_HOME`, writes an inbox message; `close` deletes the meta                                                           |
+| `~/.hypnos/skills`                   | the skills offered as `/` commands                                                                                                                                |
 
 | Store path                                        | Holds                                                                              | `--setup` creates it, when missing, as               | Startup check: one line on stderr, then exit 1                                                                                                  |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |

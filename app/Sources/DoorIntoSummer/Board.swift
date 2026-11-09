@@ -15,14 +15,14 @@ actor Board {
     private let queue = DispatchQueue(label: "com.waveprom.door-into-summer.board", qos: .utility)
     private var watch: PathWatch?
     private var continuation: AsyncStream<BoardChange>.Continuation?
-    private var live: [String] = []
-    private var attempts: [String: Attempt] = [:]
-    private var feedbacks: [String: [Int: Said]] = [:]
+    private var live: [Session] = []
+    private var attempts: [Session: Attempt] = [:]
+    private var feedbacks: [Session: [Int: Said]] = [:]
     private var jobs: [String: Job?] = [:]
     private var reading: Set<String> = []
     private var filed: Set<String>?
     private var stale: Set<URL> = []
-    private var pending: Set<String> = []
+    private var pending: Set<Session> = []
     private var pendingRoots = false
     private var pendingStore = false
     private var flush: Task<Void, Never>?
@@ -50,8 +50,8 @@ actor Board {
         }
         if event.path == StoreFile.file {
             pendingStore = true
-        } else if let name = session(owning: event.path) {
-            pending.insert(name)
+        } else if let session = session(owning: event.path) {
+            pending.insert(session)
         } else {
             pendingRoots = true
         }
@@ -63,7 +63,7 @@ actor Board {
     }
 
     private func flushed() {
-        let names = pending
+        let sessions = pending
         let roots = pendingRoots
         let store = pendingStore
         pending = []
@@ -73,8 +73,8 @@ actor Board {
         if roots {
             scanSessions(all: false)
         }
-        for name in names where live.contains(name) {
-            scanSession(name)
+        for session in sessions where live.contains(session) {
+            scanSession(session)
         }
         if store {
             scanFiled()
@@ -82,8 +82,8 @@ actor Board {
         arm()
     }
 
-    private func session(owning path: URL) -> String? {
-        live.first { name in paths(of: name).contains(path) }
+    private func session(owning path: URL) -> Session? {
+        live.first { paths(of: $0).contains(path) }
     }
 
     private func scanAll() {
@@ -92,34 +92,34 @@ actor Board {
     }
 
     private func scanSessions(all: Bool) {
-        let names = SessionFiles.liveSessions()
-        let added = names.filter { !live.contains($0) }
-        if names != live {
-            live = names
-            attempts = attempts.filter { names.contains($0.key) }
-            feedbacks = feedbacks.filter { names.contains($0.key) }
-            continuation?.yield(.sessions(names))
+        let sessions = SessionFiles.liveSessions()
+        let added = sessions.filter { !live.contains($0) }
+        if sessions != live {
+            live = sessions
+            attempts = attempts.filter { sessions.contains($0.key) }
+            feedbacks = feedbacks.filter { sessions.contains($0.key) }
+            continuation?.yield(.sessions(sessions.map(\.name)))
         }
-        for name in all ? names : added {
-            scanSession(name)
+        for session in all ? sessions : added {
+            scanSession(session)
         }
     }
 
-    private func scanSession(_ name: String) {
-        scanAttempt(name)
-        scanFeedbacks(name)
+    private func scanSession(_ session: Session) {
+        scanAttempt(session)
+        scanFeedbacks(session)
     }
 
-    private func scanAttempt(_ name: String) {
-        let file = SessionFiles.imagesFile(of: name)
+    private func scanAttempt(_ session: Session) {
+        let file = SessionFiles.imagesFile(of: session)
         guard let data = try? Data(contentsOf: file),
               let at = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
               let read = attempt(in: data, at: at) else { return }
-        if let held = attempts[name], same(held, read) {
+        if let held = attempts[session], same(held, read) {
             return
         }
-        attempts[name] = read
-        continuation?.yield(.attempt(name, read))
+        attempts[session] = read
+        continuation?.yield(.attempt(session.name, read))
         if let job = read.job {
             readJobOnce(job)
         }
@@ -129,9 +129,9 @@ actor Board {
         Attempt(subject: held.subject, number: held.number, generation: held.generation, original: held.original, job: held.job, working: held.working, at: read.at) == read
     }
 
-    private func scanFeedbacks(_ name: String) {
+    private func scanFeedbacks(_ session: Session) {
         var listed: [Int: Said] = [:]
-        for (folder, read) in [(SessionFiles.inbox(of: name), false), (SessionFiles.handled(of: name), true)] {
+        for (folder, read) in [(SessionFiles.inbox(of: session), false), (SessionFiles.handled(of: session), true)] {
             for message in messages(in: folder) {
                 guard let number = Int(message.deletingPathExtension().lastPathComponent),
                       let content = try? String(contentsOf: message, encoding: .utf8),
@@ -140,10 +140,10 @@ actor Board {
                 listed[number] = spoken
             }
         }
-        let held = feedbacks[name] ?? [:]
-        feedbacks[name] = listed
+        let held = feedbacks[session] ?? [:]
+        feedbacks[session] = listed
         for (number, spoken) in listed.sorted(by: { $0.key < $1.key }) where held[number] != spoken {
-            continuation?.yield(.feedback(name, spoken))
+            continuation?.yield(.feedback(session.name, spoken))
         }
     }
 
@@ -176,15 +176,16 @@ actor Board {
     }
 
     private func arm() {
-        var watched: Set<URL> = [SessionFiles.home, SessionFiles.state, SessionFiles.data, StoreFile.file]
-        for name in live {
-            watched.formUnion(paths(of: name))
+        var watched = SessionFiles.roots()
+        watched.insert(StoreFile.file)
+        for session in live {
+            watched.formUnion(paths(of: session))
         }
         watch?.watch(watched, stale: stale)
         stale = []
     }
 
-    private func paths(of name: String) -> Set<URL> {
-        [SessionFiles.directory(of: name), SessionFiles.imagesFile(of: name), SessionFiles.inbox(of: name), SessionFiles.handled(of: name)]
+    private func paths(of session: Session) -> Set<URL> {
+        [SessionFiles.directory(of: session), SessionFiles.imagesFile(of: session), SessionFiles.inbox(of: session), SessionFiles.handled(of: session)]
     }
 }

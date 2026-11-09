@@ -16,7 +16,8 @@ enum Sent: Equatable, Sendable {
 
 func deliver(_ feedback: Feedback) async -> Sent {
     let line = feedbackLine(attempt: feedback.attempt, text: feedback.text, reference: feedback.reference)
-    guard let outcome = await run("bash", [SessionFiles.sessionScript.path, "send", feedback.session, line], timeout: deliveryTimeout) else {
+    let home = SessionFiles.home(of: feedback.session)
+    guard let outcome = await run("env", ["HYPNOS_HOME=\(home.path)", "bash", SessionFiles.sessionScript.path, "send", feedback.session, line], timeout: deliveryTimeout) else {
         return .refused("hy-session.sh did not run.")
     }
     if let number = messageNumber(in: outcome) {

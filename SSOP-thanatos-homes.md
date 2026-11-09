@@ -40,3 +40,7 @@ Batches: 1. `Session`, `SessionFiles`. 2. `Board`, `deliver`. 3. The contract.
 | The home of a live session | the filesystem: the directory holding its meta | `Board`, a copy in `live`; `deliver`, read at each send | `hy-session.sh start` and `close` |
 | The live sessions in memory | `Board.live` | `Board` | `Board.scanSessions` |
 | The watched paths | `PathWatch` | `PathWatch` | `Board.arm()` |
+
+## Amendments
+
+- `Board` keys `attempts` and `feedbacks` by `Session`, so a name that moves to another home is read again there, and yields `.sessions` with the names whenever a session or its home changes, which `ThreadStore.relist` takes as a no-op while the names stay.
